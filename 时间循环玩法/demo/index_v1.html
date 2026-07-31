@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>时间循环战术 — 灰盒 Demo</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #eee;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 12px;
+  overflow-x: hidden;
+}
+h1 { font-size: 16px; margin-bottom: 6px; color: #7fdbca; }
+#info-bar {
+  display: flex; gap: 12px; margin-bottom: 8px;
+  font-size: 13px; color: #aaa;
+  flex-wrap: wrap; justify-content: center;
+}
+#info-bar span { color: #fff; }
+#board {
+  --cell-size: min(60px, calc((100vw - 40px) / 8));
+  display: grid;
+  grid-template-columns: repeat(8, var(--cell-size));
+  grid-template-rows: repeat(8, var(--cell-size));
+  gap: 1px;
+  background: #333;
+  border: 2px solid #555;
+}
+.cell {
+  width: var(--cell-size); height: var(--cell-size);
+  background: #2a2a3e;
+  display: flex; align-items: center; justify-content: center;
+  font-size: min(24px, calc(var(--cell-size) * 0.4));
+  position: relative;
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cell:hover { background: #3a3a5e; }
+.cell.wall { background: #555; cursor: default; }
+.cell.wall:hover { background: #555; }
+.cell.move-range { background: #2a4a3e; }
+.cell.attack-range { background: #4a2a2a; }
+.cell.ghost-path { background: #2a2a4a; }
+.cell.flash-move { animation: flashMove 0.4s ease; }
+.cell.flash-attack { animation: flashAttack 0.4s ease; }
+.cell.flash-hit { animation: flashHit 0.5s ease; }
+.cell.flash-kill { animation: flashKill 0.6s ease; }
+.cell.flash-ghost-move { animation: flashGhostMove 0.4s ease; }
+.cell.flash-ghost-attack { animation: flashGhostAttack 0.4s ease; }
+@keyframes flashMove {
+  0% { background: #2a2a3e; }
+  30% { background: #3a5a4a; }
+  100% { background: #2a2a3e; }
+}
+@keyframes flashAttack {
+  0% { background: #2a2a3e; }
+  20% { background: #8a3a3a; }
+  100% { background: #2a2a3e; }
+}
+@keyframes flashHit {
+  0% { background: #2a2a3e; transform: scale(1); }
+  20% { background: #ff4444; transform: scale(1.1); }
+  50% { background: #aa2222; transform: scale(0.95); }
+  100% { background: #2a2a3e; transform: scale(1); }
+}
+@keyframes flashKill {
+  0% { background: #2a2a3e; transform: scale(1); }
+  20% { background: #ff0000; transform: scale(1.15); }
+  60% { background: #660000; transform: scale(0.9); }
+  100% { background: #2a2a3e; transform: scale(1); }
+}
+@keyframes flashGhostMove {
+  0% { background: #2a2a3e; }
+  30% { background: #3a2a5a; }
+  100% { background: #2a2a3e; }
+}
+@keyframes flashGhostAttack {
+  0% { background: #2a2a3e; }
+  20% { background: #6a3a8a; }
+  100% { background: #2a2a3e; }
+}
+.cell .unit { font-size: min(28px, calc(var(--cell-size) * 0.5)); }
+.cell .hp-bar {
+  position: absolute; bottom: 1px; left: 2px; right: 2px;
+  height: 3px; background: #333; border-radius: 2px;
+}
+.cell .hp-bar .hp-fill {
+  height: 100%; border-radius: 2px; transition: width 0.2s;
+}
+.hp-fill.player { background: #7fdbca; }
+.hp-fill.enemy { background: #e74c3c; }
+.hp-fill.ghost { background: #9b59b6; }
+
+#controls {
+  margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+button {
+  padding: 10px 14px;
+  background: #3a3a5e;
+  color: #eee;
+  border: 1px solid #666;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  min-height: 44px;
+}
+button:hover { background: #4a4a6e; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: #2e7d6a; border-color: #7fdbca; }
+
+#log {
+  margin-top: 12px;
+  width: min(490px, calc(100vw - 24px));
+  max-height: 120px;
+  overflow-y: auto;
+  background: #111;
+  border: 1px solid #333;
+  padding: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aaa;
+}
+#log .log-entry { margin-bottom: 2px; }
+#log .log-entry.important { color: #7fdbca; }
+#log .log-entry.danger { color: #e74c3c; }
+#log .log-entry.ghost-log { color: #9b59b6; }
+
+#phase-indicator {
+  margin-bottom: 6px;
+  padding: 5px 12px;
+  background: #2a2a3e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+  max-width: min(490px, calc(100vw - 24px));
+}
+
+#modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  align-items: center; justify-content: center;
+  z-index: 100;
+}
+#modal-overlay.visible { display: flex; }
+#modal {
+  background: #2a2a3e;
+  border: 2px solid #7fdbca;
+  border-radius: 8px;
+  padding: 24px 16px;
+  text-align: center;
+  max-width: min(400px, calc(100vw - 32px));
+}
+#modal h2 { color: #7fdbca; margin-bottom: 10px; font-size: 18px; }
+#modal p { margin-bottom: 14px; font-size: 13px; line-height: 1.6; }
+#modal button { margin: 4px 6px; }
+</style>
+</head>
+<body>
+<h1>时间循环战术 — 灰盒 Demo</h1>
+<div id="phase-indicator">阶段：等待开始</div>
+<div id="info-bar">
+  时间线：<span id="timeline-num">T1</span> |
+  命数：<span id="lives-left">2</span> |
+  回合：<span id="turn-num">1</span> |
+  HP：<span id="player-hp">3/3</span>
+</div>
+<div id="board"></div>
+<div id="controls">
+  <button id="btn-end-turn" disabled>结束回合</button>
+  <button id="btn-crystallize" disabled>固化</button>
+  <button id="btn-restart-battle">重开整场</button>
+</div>
+<div id="log"></div>
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title"></h2>
+    <p id="modal-text"></p>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
+
+<script>
+// ============ GAME CONFIG ============
+const GRID = 8;
+const PLAYER_HP = 3;
+const PLAYER_ATK = 2;
+const PLAYER_MOVE = 3;
+const ENEMY_HP = 3;
+const ENEMY_ATK = 2;
+const ENEMY_MOVE = 2;
+const MAX_LIVES = 3;
+
+// Walls (row, col)
+const WALLS = [
+  [2, 2], [2, 3],
+  [5, 4], [5, 5],
+  [3, 6],
+  [6, 1],
+];
+
+// Initial enemy positions and patrol data
+const INITIAL_ENEMIES = [
+  { id: 0, row: 1, col: 6, hp: ENEMY_HP },
+  { id: 1, row: 5, col: 2, hp: ENEMY_HP },
+  { id: 2, row: 6, col: 6, hp: ENEMY_HP },
+  { id: 3, row: 3, col: 1, hp: ENEMY_HP },
+];
+
+const PLAYER_START = { row: 7, col: 0 };
+
+// ============ GAME STATE ============
+let game = null;
+
+function createGame() {
+  return {
+    timeline: 1,
+    livesLeft: MAX_LIVES,
+    turn: 1,
+    phase: 'player_move', // player_move -> player_attack -> enemy -> turn_end
+    player: { ...PLAYER_START, hp: PLAYER_HP, maxHp: PLAYER_HP, moved: false, attacked: false },
+    enemies: INITIAL_ENEMIES.map(e => ({ ...e })),
+    ghosts: [], // array of timeline recordings
+    currentRecording: [], // actions this timeline
+    moveRange: [],
+    attackRange: [],
+    selectedAction: null, // 'move' | 'attack'
+    ghostActions: [], // ghost actions for current turn (pre-computed)
+    enemyIntents: [], // enemy intents for current turn
+    gameOver: false,
+    victory: false,
+    enemyHistory: {}, // turn -> array of enemy intents (fixed history)
+  };
+}
+
+// ============ HELPERS ============
+function isWall(r, c) {
+  return WALLS.some(([wr, wc]) => wr === r && wc === c);
+}
+
+function isInBounds(r, c) {
+  return r >= 0 && r < GRID && c >= 0 && c < GRID;
+}
+
+function manhattan(r1, c1, r2, c2) {
+  return Math.abs(r1 - r2) + Math.abs(c1 - c2);
+}
+
+function getReachable(startR, startC, range) {
+  const visited = new Set();
+  const queue = [{ r: startR, c: startC, dist: 0 }];
+  visited.add(`${startR},${startC}`);
+  const result = [];
+
+  while (queue.length > 0) {
+    const { r, c, dist } = queue.shift();
+    if (dist > 0) result.push({ r, c });
+    if (dist >= range) continue;
+
+    for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+      const nr = r + dr, nc = c + dc;
+      const key = `${nr},${nc}`;
+      if (!isInBounds(nr, nc) || visited.has(key) || isWall(nr, nc)) continue;
+      // Can't stop on living enemy
+      visited.add(key);
+      queue.push({ r: nr, c: nc, dist: dist + 1 });
+    }
+  }
+  return result;
+}
+
+function getAttackTargets(r, c) {
+  // Attack range: adjacent 4 cells
+  const targets = [];
+  for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+    const nr = r + dr, nc = c + dc;
+    if (!isInBounds(nr, nc)) continue;
+    const enemy = game.enemies.find(e => e.hp > 0 && e.row === nr && e.col === nc);
+    if (enemy) targets.push({ r: nr, c: nc, enemy });
+  }
+  return targets;
+}
+
+// ============ ENEMY AI ============
+function computeEnemyIntents() {
+  // Check fixed history first
+  if (game.enemyHistory[game.turn]) {
+    return game.enemyHistory[game.turn].map(intent => {
+      const enemy = game.enemies.find(e => e.id === intent.enemyId);
+      if (!enemy || enemy.hp <= 0) return { ...intent, valid: false };
+      return { ...intent, valid: true };
+    });
+  }
+
+  // Generate new intents
+  const intents = [];
+  for (const enemy of game.enemies) {
+    if (enemy.hp <= 0) continue;
+
+    const target = game.player;
+    const dist = manhattan(enemy.row, enemy.col, target.row, target.col);
+
+    // Move toward player (up to ENEMY_MOVE steps)
+    let curR = enemy.row, curC = enemy.col;
+    if (dist > 1) {
+      for (let step = 0; step < ENEMY_MOVE; step++) {
+        let bestDir = null, bestDist = manhattan(curR, curC, target.row, target.col);
+        for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+          const nr = curR + dr, nc = curC + dc;
+          if (!isInBounds(nr, nc) || isWall(nr, nc)) continue;
+          if (game.enemies.some(e => e.id !== enemy.id && e.hp > 0 && e.row === nr && e.col === nc)) continue;
+          const d = manhattan(nr, nc, target.row, target.col);
+          if (d < bestDist) { bestDist = d; bestDir = [dr, dc]; }
+        }
+        if (bestDir) {
+          curR += bestDir[0];
+          curC += bestDir[1];
+          if (manhattan(curR, curC, target.row, target.col) <= 1) break;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Build intent: move (if moved) + attack (if adjacent after move)
+    const didMove = (curR !== enemy.row || curC !== enemy.col);
+    const adjacentAfter = manhattan(curR, curC, target.row, target.col) <= 1;
+
+    if (didMove && adjacentAfter) {
+      intents.push({
+        enemyId: enemy.id,
+        type: 'move_attack',
+        fromRow: enemy.row, fromCol: enemy.col,
+        toRow: curR, toCol: curC,
+        targetRow: target.row, targetCol: target.col,
+        valid: true,
+      });
+    } else if (didMove) {
+      intents.push({
+        enemyId: enemy.id,
+        type: 'move',
+        fromRow: enemy.row, fromCol: enemy.col,
+        toRow: curR, toCol: curC,
+        valid: true,
+      });
+    } else if (adjacentAfter) {
+      intents.push({
+        enemyId: enemy.id,
+        type: 'attack',
+        fromRow: enemy.row, fromCol: enemy.col,
+        targetRow: target.row, targetCol: target.col,
+        valid: true,
+      });
+    } else {
+      intents.push({ enemyId: enemy.id, type: 'wait', valid: true });
+    }
+  }
+
+  // Save to history
+  game.enemyHistory[game.turn] = intents.map(i => ({ ...i }));
+  return intents;
+}
+
+// ============ GHOST REPLAY ============
+function getGhostActionsForTurn(turn) {
+  const actions = [];
+  for (let gi = 0; gi < game.ghosts.length; gi++) {
+    const ghost = game.ghosts[gi];
+    // Get ALL actions for this turn (move + attack)
+    const turnActions = ghost.actions.filter(a => a.turn === turn);
+    for (const action of turnActions) {
+      actions.push({ ghostIndex: gi, ...action });
+    }
+  }
+  return actions;
+}
+
+async function executeGhostActions() {
+  const actions = getGhostActionsForTurn(game.turn);
+  if (actions.length === 0) return false;
+
+  for (const action of actions) {
+    const ghost = game.ghosts[action.ghostIndex];
+
+    if (action.type === 'move') {
+      ghost.currentRow = action.toRow;
+      ghost.currentCol = action.toCol;
+      addLog(`分身 T${action.ghostIndex + 1} 移动到 (${action.toRow},${action.toCol})`, 'ghost-log');
+      render();
+      flashCell(action.toRow, action.toCol, 'flash-ghost-move');
+      await sleep(300);
+    } else if (action.type === 'attack') {
+      ghost.currentRow = action.fromRow;
+      ghost.currentCol = action.fromCol;
+      const targetEnemy = game.enemies.find(e => e.hp > 0 && e.row === action.targetRow && e.col === action.targetCol);
+      if (targetEnemy) {
+        flashCell(action.fromRow, action.fromCol, 'flash-ghost-attack');
+        await sleep(200);
+        targetEnemy.hp -= PLAYER_ATK;
+        addLog(`分身 T${action.ghostIndex + 1} 攻击 (${action.targetRow},${action.targetCol}) → 敌人受到 ${PLAYER_ATK} 伤害`, 'ghost-log');
+        render();
+        flashCell(action.targetRow, action.targetCol, 'flash-hit');
+        if (targetEnemy.hp <= 0) {
+          addLog(`敌人 #${targetEnemy.id} 被分身击杀！`, 'important');
+          flashCell(action.targetRow, action.targetCol, 'flash-kill');
+        }
+        await sleep(350);
+      } else if (game.player.row === action.targetRow && game.player.col === action.targetCol) {
+        flashCell(action.fromRow, action.fromCol, 'flash-ghost-attack');
+        await sleep(200);
+        game.player.hp -= PLAYER_ATK;
+        addLog(`分身 T${action.ghostIndex + 1} 友军伤害！本体受到 ${PLAYER_ATK} 伤害`, 'danger');
+        render();
+        flashCell(game.player.row, game.player.col, 'flash-hit');
+        await sleep(400);
+      } else {
+        addLog(`分身 T${action.ghostIndex + 1} 攻击 (${action.targetRow},${action.targetCol}) → 目标格为空，无效果`, 'ghost-log');
+        flashCell(action.targetRow, action.targetCol, 'flash-ghost-attack');
+        await sleep(300);
+      }
+    }
+
+    updateInfoBar();
+  }
+
+  // Check victory
+  if (game.enemies.every(e => e.hp <= 0)) {
+    handleVictory();
+    return true;
+  }
+  // Check player death from friendly fire
+  if (game.player.hp <= 0) {
+    addLog(`本体被分身友军火力击杀！`, 'danger');
+    flashCell(game.player.row, game.player.col, 'flash-kill');
+    await sleep(600);
+    handlePlayerDeath();
+    return true;
+  }
+  return false;
+}
+
+// ============ VISUAL EFFECTS ============
+function flashCell(row, col, className) {
+  const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+  if (!cell) return;
+  cell.classList.remove(className);
+  void cell.offsetWidth; // force reflow
+  cell.classList.add(className);
+  setTimeout(() => cell.classList.remove(className), 600);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============ ENEMY EXECUTION ============
+async function executeEnemyPhase() {
+  // Reactive mode: compute intents NOW based on player's actual position
+  if (game.enemyReactive) {
+    game.enemyIntents = computeEnemyIntents();
+  }
+
+  const intents = game.enemyIntents;
+  for (const intent of intents) {
+    if (!intent.valid) continue;
+    const enemy = game.enemies.find(e => e.id === intent.enemyId);
+    if (!enemy || enemy.hp <= 0) continue;
+
+    if (intent.type === 'move') {
+      enemy.row = intent.toRow;
+      enemy.col = intent.toCol;
+      addLog(`敌人 #${enemy.id} 移动到 (${intent.toRow},${intent.toCol})`);
+      render();
+      flashCell(intent.toRow, intent.toCol, 'flash-move');
+      await sleep(350);
+    } else if (intent.type === 'attack') {
+      if (game.player.row === intent.targetRow && game.player.col === intent.targetCol) {
+        flashCell(enemy.row, enemy.col, 'flash-attack');
+        await sleep(200);
+        game.player.hp -= ENEMY_ATK;
+        addLog(`敌人 #${enemy.id} 攻击本体 → ${ENEMY_ATK} 伤害`, 'danger');
+        render();
+        flashCell(game.player.row, game.player.col, 'flash-hit');
+        await sleep(400);
+      } else {
+        addLog(`敌人 #${enemy.id} 攻击 (${intent.targetRow},${intent.targetCol}) → 本体已离开，失效`);
+        flashCell(intent.targetRow, intent.targetCol, 'flash-attack');
+        await sleep(300);
+      }
+    } else if (intent.type === 'move_attack') {
+      enemy.row = intent.toRow;
+      enemy.col = intent.toCol;
+      addLog(`敌人 #${enemy.id} 移动到 (${intent.toRow},${intent.toCol})`);
+      render();
+      flashCell(intent.toRow, intent.toCol, 'flash-move');
+      await sleep(300);
+      if (game.player.row === intent.targetRow && game.player.col === intent.targetCol) {
+        flashCell(enemy.row, enemy.col, 'flash-attack');
+        await sleep(200);
+        game.player.hp -= ENEMY_ATK;
+        addLog(`敌人 #${enemy.id} 攻击本体 → ${ENEMY_ATK} 伤害`, 'danger');
+        render();
+        flashCell(game.player.row, game.player.col, 'flash-hit');
+        await sleep(400);
+      } else {
+        addLog(`敌人 #${enemy.id} 攻击 (${intent.targetRow},${intent.targetCol}) → 本体已离开，失效`);
+        flashCell(intent.targetRow, intent.targetCol, 'flash-attack');
+        await sleep(300);
+      }
+    }
+
+    updateInfoBar();
+
+    // Check player death after each enemy action
+    if (game.player.hp <= 0) {
+      addLog(`本体被敌人 #${enemy.id} 击杀！`, 'danger');
+      flashCell(game.player.row, game.player.col, 'flash-kill');
+      await sleep(600);
+      handlePlayerDeath();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ============ GAME FLOW ============
+function startTurn() {
+  game.player.moved = false;
+  game.player.attacked = false;
+  game.phase = 'ghost';
+
+  // Determine if this turn has fixed history (known time)
+  const hasHistory = game.enemyHistory[game.turn] !== undefined;
+
+  // Known time (T2+ within recorded turns): pre-compute from history, show preview
+  // Unknown time (T1, or T2+ beyond recorded turns): defer to after player acts
+  if (hasHistory) {
+    game.enemyIntents = computeEnemyIntents();
+    game.enemyReactive = false;
+  } else {
+    game.enemyIntents = [];
+    game.enemyReactive = true;
+  }
+
+  setPhaseText('分身执行中...');
+  addLog(`—— 回合 ${game.turn} 开始 ——`, 'important');
+
+  // Show enemy intents only when we have history (known time)
+  if (hasHistory) {
+    for (const intent of game.enemyIntents) {
+      if (!intent.valid) continue;
+      if (intent.type === 'attack') {
+        addLog(`[预知] 敌人 #${intent.enemyId} 将攻击 (${intent.targetRow},${intent.targetCol})`);
+      } else if (intent.type === 'move') {
+        addLog(`[预知] 敌人 #${intent.enemyId} 将移动到 (${intent.toRow},${intent.toCol})`);
+      } else if (intent.type === 'move_attack') {
+        addLog(`[预知] 敌人 #${intent.enemyId} 将移动到 (${intent.toRow},${intent.toCol}) 并攻击 (${intent.targetRow},${intent.targetCol})`);
+      }
+    }
+  } else {
+    addLog(`[未知时间] 敌人将实时反应你的行动`);
+  }
+
+  render();
+
+  // Execute ghosts
+  (async () => {
+    if (game.ghosts.length > 0) await sleep(300);
+    const ended = await executeGhostActions();
+    if (!ended) {
+      game.phase = 'player_move';
+      setPhaseText('本体行动：选择移动目标（点击绿色格子）或直接攻击');
+      updateMoveRange();
+      render();
+    }
+  })();
+}
+
+function updateMoveRange() {
+  if (!game.player.moved) {
+    game.moveRange = getReachable(game.player.row, game.player.col, PLAYER_MOVE);
+    // Remove cells occupied by living enemies
+    game.moveRange = game.moveRange.filter(c => !game.enemies.some(e => e.hp > 0 && e.row === c.r && e.col === c.c));
+  } else {
+    game.moveRange = [];
+  }
+  game.attackRange = [];
+  if (!game.player.attacked) {
+    const targets = getAttackTargets(game.player.row, game.player.col);
+    game.attackRange = targets.map(t => ({ r: t.r, c: t.c }));
+  }
+}
+
+function handleCellClick(r, c) {
+  if (game.gameOver || game.victory) return;
+  if (game.phase !== 'player_move' && game.phase !== 'player_attack') return;
+
+  // Try move
+  if (!game.player.moved && game.moveRange.some(m => m.r === r && m.c === c)) {
+    // Record move
+    game.currentRecording.push({
+      turn: game.turn,
+      type: 'move',
+      fromRow: game.player.row, fromCol: game.player.col,
+      toRow: r, toCol: c,
+    });
+    game.player.row = r;
+    game.player.col = c;
+    game.player.moved = true;
+    game.phase = 'player_attack';
+    setPhaseText('本体行动：选择攻击目标（点击红色格子）或结束回合');
+    updateMoveRange();
+    render();
+    return;
+  }
+
+  // Try attack
+  if (!game.player.attacked && game.attackRange.some(a => a.r === r && a.c === c)) {
+    const enemy = game.enemies.find(e => e.hp > 0 && e.row === r && e.col === c);
+    if (enemy) {
+      game.currentRecording.push({
+        turn: game.turn,
+        type: 'attack',
+        fromRow: game.player.row, fromCol: game.player.col,
+        targetRow: r, targetCol: c,
+      });
+      flashCell(game.player.row, game.player.col, 'flash-attack');
+      enemy.hp -= PLAYER_ATK;
+      game.player.attacked = true;
+      addLog(`本体攻击 (${r},${c}) → 敌人 #${enemy.id} 受到 ${PLAYER_ATK} 伤害`, 'important');
+      if (enemy.hp <= 0) {
+        addLog(`敌人 #${enemy.id} 被击杀！`, 'important');
+        flashCell(r, c, 'flash-kill');
+      } else {
+        flashCell(r, c, 'flash-hit');
+      }
+
+      // Check victory
+      if (game.enemies.every(e => e.hp <= 0)) {
+        handleVictory();
+        return;
+      }
+
+      game.phase = 'player_done';
+      setPhaseText('本体行动结束，点击"结束回合"进入敌方阶段');
+      game.moveRange = [];
+      game.attackRange = [];
+      render();
+      document.getElementById('btn-end-turn').disabled = false;
+      return;
+    }
+  }
+}
+
+async function endTurn() {
+  if (game.gameOver || game.victory) return;
+
+  game.phase = 'enemy';
+  game.moveRange = [];
+  game.attackRange = [];
+  setPhaseText('敌方执行中...');
+  render();
+
+  await sleep(200);
+  const ended = await executeEnemyPhase();
+  if (!ended) {
+    game.turn++;
+    updateInfoBar();
+    startTurn();
+  }
+}
+
+function handlePlayerDeath() {
+  game.livesLeft--;
+
+  if (game.livesLeft <= 0) {
+    game.gameOver = true;
+    setPhaseText('战斗失败');
+    showModal('战斗失败', '所有命数已耗尽。时间线崩坏。', [
+      { text: '重开整场', action: restartBattle },
+    ]);
+  } else {
+    // Save recording as ghost
+    game.ghosts.push({
+      actions: [...game.currentRecording],
+      currentRow: PLAYER_START.row,
+      currentCol: PLAYER_START.col,
+    });
+
+    showModal('时间线结束', `第 T${game.timeline} 条时间线的你成为了分身。\n剩余命数：${game.livesLeft}`, [
+      { text: '开始下一条时间线', action: startNextTimeline },
+    ]);
+  }
+  render();
+}
+
+function handleVictory() {
+  game.victory = true;
+  game.phase = 'victory';
+  setPhaseText('胜利！');
+  addLog('🎉 所有敌人已被消灭！战斗胜利！', 'important');
+
+  const timelineCount = game.timeline;
+  const turnCount = game.turn;
+  showModal('战斗胜利！', `用了 ${timelineCount} 条时间线，${turnCount} 回合完成战斗。\n${timelineCount === 1 ? '一条命通关！完美！' : '时间编排成功！'}`, [
+    { text: '再来一次', action: restartBattle },
+  ]);
+  render();
+}
+
+function startNextTimeline() {
+  hideModal();
+  game.timeline++;
+  game.turn = 1;
+  game.player = { ...PLAYER_START, hp: PLAYER_HP, maxHp: PLAYER_HP, moved: false, attacked: false };
+  game.enemies = INITIAL_ENEMIES.map(e => ({ ...e }));
+  game.currentRecording = [];
+  game.moveRange = [];
+  game.attackRange = [];
+  // Reset ghost positions
+  for (const ghost of game.ghosts) {
+    ghost.currentRow = PLAYER_START.row;
+    ghost.currentCol = PLAYER_START.col;
+  }
+
+  addLog(`\n══ 时间线 T${game.timeline} 开始 ══\n`, 'important');
+  updateInfoBar();
+  startTurn();
+}
+
+function handleCrystallize() {
+  if (game.gameOver || game.victory) return;
+  if (game.livesLeft <= 1) return; // Last life can't crystallize
+
+  game.livesLeft--;
+  game.ghosts.push({
+    actions: [...game.currentRecording],
+    currentRow: PLAYER_START.row,
+    currentCol: PLAYER_START.col,
+  });
+
+  addLog('⏱ 固化！当前时间线主动结束。', 'important');
+  showModal('固化完成', `T${game.timeline} 的行动已写入录像。\n剩余命数：${game.livesLeft}`, [
+    { text: '开始下一条时间线', action: startNextTimeline },
+  ]);
+  render();
+}
+
+function restartBattle() {
+  hideModal();
+  clearLog();
+  game = createGame();
+  addLog('══ 战斗开始 ══', 'important');
+  updateInfoBar();
+  startTurn();
+}
+
+// ============ UI ============
+function render() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+
+      if (isWall(r, c)) {
+        cell.classList.add('wall');
+        cell.innerHTML = '<span class="unit">█</span>';
+      } else {
+        // Highlight ranges
+        if (game.moveRange.some(m => m.r === r && m.c === c)) {
+          cell.classList.add('move-range');
+        }
+        if (game.attackRange.some(a => a.r === r && a.c === c)) {
+          cell.classList.add('attack-range');
+        }
+
+        // Draw ghosts
+        const ghostHere = game.ghosts.findIndex(g => g.currentRow === r && g.currentCol === c);
+        if (ghostHere >= 0) {
+          cell.innerHTML = `<span class="unit" style="opacity:0.6;color:#9b59b6">👤</span>`;
+        }
+
+        // Draw enemies
+        const enemy = game.enemies.find(e => e.hp > 0 && e.row === r && e.col === c);
+        if (enemy) {
+          cell.innerHTML = `<span class="unit">👾</span>`;
+          cell.innerHTML += `<div class="hp-bar"><div class="hp-fill enemy" style="width:${(enemy.hp/ENEMY_HP)*100}%"></div></div>`;
+        }
+
+        // Draw player (on top)
+        if (game.player.row === r && game.player.col === c) {
+          cell.innerHTML = `<span class="unit">🧑</span>`;
+          cell.innerHTML += `<div class="hp-bar"><div class="hp-fill player" style="width:${(game.player.hp/game.player.maxHp)*100}%"></div></div>`;
+        }
+
+        // Enemy intent indicator (only show when in known time with history)
+        if (!game.enemyReactive) {
+          const intent = game.enemyIntents?.find(i => i.valid && (i.type === 'attack' || i.type === 'move_attack') && i.targetRow === r && i.targetCol === c);
+          if (intent && !(game.player.row === r && game.player.col === c) && !enemy) {
+            cell.style.boxShadow = 'inset 0 0 8px rgba(231,76,60,0.5)';
+          }
+        }
+      }
+
+      cell.addEventListener('click', () => handleCellClick(r, c));
+      board.appendChild(cell);
+    }
+  }
+
+  // Update buttons
+  const canEndTurn = (game.phase === 'player_move' || game.phase === 'player_attack' || game.phase === 'player_done') && !game.gameOver && !game.victory;
+  document.getElementById('btn-end-turn').disabled = !canEndTurn;
+  document.getElementById('btn-crystallize').disabled = game.livesLeft <= 1 || game.gameOver || game.victory || (game.phase !== 'player_move' && game.phase !== 'player_attack' && game.phase !== 'player_done');
+
+  updateInfoBar();
+}
+
+function updateInfoBar() {
+  document.getElementById('timeline-num').textContent = `T${game.timeline}`;
+  document.getElementById('lives-left').textContent = game.livesLeft;
+  document.getElementById('turn-num').textContent = game.turn;
+  document.getElementById('player-hp').textContent = `${game.player.hp}/${game.player.maxHp}`;
+}
+
+function setPhaseText(text) {
+  document.getElementById('phase-indicator').textContent = `阶段：${text}`;
+}
+
+function addLog(text, className = '') {
+  const log = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${className}`;
+  entry.textContent = text;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+function showModal(title, text, buttons) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-text').textContent = text;
+  const btnContainer = document.getElementById('modal-buttons');
+  btnContainer.innerHTML = '';
+  for (const btn of buttons) {
+    const el = document.createElement('button');
+    el.textContent = btn.text;
+    el.className = 'primary';
+    el.addEventListener('click', btn.action);
+    btnContainer.appendChild(el);
+  }
+  document.getElementById('modal-overlay').classList.add('visible');
+}
+
+function hideModal() {
+  document.getElementById('modal-overlay').classList.remove('visible');
+}
+
+// ============ INIT ============
+document.getElementById('btn-end-turn').addEventListener('click', endTurn);
+document.getElementById('btn-crystallize').addEventListener('click', handleCrystallize);
+document.getElementById('btn-restart-battle').addEventListener('click', restartBattle);
+
+game = createGame();
+addLog('══ 战斗开始 ══', 'important');
+addLog('目标：消灭所有敌人。你有 2 条命。', 'important');
+addLog('操作：点击绿色格子移动，点击红色格子攻击，或直接结束回合。');
+addLog('死亡后你的行动将成为分身录像，在下一条时间线中自动重演。');
+startTurn();
+</script>
+</body>
+</html>
