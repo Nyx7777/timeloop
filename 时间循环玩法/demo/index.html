@@ -76,6 +76,7 @@ h1 { font-size: 18px; margin-bottom: 6px; color: #7fdbca; }
 #time-state { flex: 0 0 auto; padding: 3px 7px; border-radius: 3px; font-weight: bold; }
 #time-state.known { background: #23443d; color: #7fdbca; }
 #time-state.unknown { background: #4a3524; color: #f1b56b; }
+#time-state.disturbed { background: #4a263b; color: #ff8fc7; }
 #ghost-preview { color: #b9a2d5; flex: 1; }
 #info-bar {
   display: flex; gap: 12px; margin-bottom: 8px;
@@ -106,10 +107,18 @@ h1 { font-size: 18px; margin-bottom: 6px; color: #7fdbca; }
 .cell:hover { background: #3a3a5e; }
 .cell.wall { background: #555; cursor: default; }
 .cell.wall:hover { background: #555; }
+.cell.hole {
+  background: radial-gradient(circle, #05050b 18%, #17112a 48%, #34235b 72%, #17172a 74%);
+  cursor: default;
+  box-shadow: inset 0 0 10px rgba(176, 105, 255, 0.45);
+}
+.cell.hole:hover { background: radial-gradient(circle, #05050b 18%, #17112a 48%, #34235b 72%, #17172a 74%); }
+.cell.hole .unit { color: #b978ff; font-size: min(21px, calc(var(--cell-size) * 0.38)); }
 .cell.move-range { background: #2a4a3e; }
 .cell.attack-range { background: #4a2a2a; }
 .cell.ghost-path { background: #2a2a4a; }
 .cell.ghost-fire { box-shadow: inset 0 0 0 2px rgba(185, 110, 255, 0.8); }
+.cell.enemy-move-target { outline: 2px dashed rgba(241, 181, 107, 0.9); outline-offset: -5px; }
 .cell.flash-move { animation: flashMove 0.4s ease; }
 .cell.flash-attack { animation: flashAttack 0.4s ease; }
 .cell.flash-hit { animation: flashHit 0.5s ease; }
@@ -235,9 +244,9 @@ button.primary { background: #2e7d6a; border-color: #7fdbca; }
 </head>
 <body>
 <section id="level-select" class="screen">
-  <div class="select-kicker">PLAYTEST BUILD · 04</div>
+  <div class="select-kicker">PLAYTEST BUILD · 06</div>
   <h1>时间循环战术</h1>
-  <p class="select-intro">四个灰盒关卡分别验证一种核心体验。建议按顺序游玩，也可以直接选择任意关卡。</p>
+  <p class="select-intro">六个灰盒关卡分两组验证时间协作与空间互动。建议按顺序游玩，也可以直接选择任意关卡。</p>
   <div id="level-grid"></div>
 </section>
 
@@ -308,19 +317,6 @@ const LEVELS = [
     enemies: [{ id: 0, row: 4, col: 1 }, { id: 1, row: 4, col: 5 }],
   },
   {
-    id: 'known-future',
-    name: '已知的未来',
-    focus: '固定历史与诱导',
-    difficulty: '进阶',
-    briefing: '第一次经历时，敌人会实时追踪；下一条时间线中，它们会重复已经发生的选择。利用预知改变第二次交锋。',
-    hint: '提示：橙色“未知时间”没有敌方预告；绿色“已知时间”会锁定历史。敌人的红色攻击格不会临时追踪你。',
-    lives: 3, playerHp: 3, playerAtk: 2, playerMove: 3,
-    enemyHp: 3, enemyAtk: 2, enemyMove: 2,
-    playerStart: { row: 7, col: 0 },
-    walls: [[2,2], [2,3], [4,4], [5,4], [6,1]],
-    enemies: [{ id: 0, row: 2, col: 6 }, { id: 1, row: 5, col: 2 }, { id: 2, row: 4, col: 6 }],
-  },
-  {
     id: 'purple-crossfire',
     name: '紫色交火区',
     focus: '多分身与友军火线',
@@ -338,6 +334,53 @@ const LEVELS = [
       { id: 3, row: 3, col: 1 },
     ],
   },
+  {
+    id: 'push-calibration',
+    name: '推力校准',
+    focus: '攻击击退与时间空洞',
+    difficulty: '机制教学',
+    briefing: '普通攻击若没有击杀敌人，会把它向远离你的方向推一格。把守卫推入时间空洞，可以立即消灭它。',
+    hint: '提示：黑紫色漩涡是时间空洞。单位不会主动走入，但被攻击或撞击推入时会立刻死亡。',
+    lives: 2, playerHp: 4, playerAtk: 1, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 1, pushEnabled: true,
+    playerStart: { row: 7, col: 1 },
+    walls: [[4,0], [4,1], [4,2], [2,4], [2,5], [2,6]],
+    holes: [[5,1], [3,5]],
+    enemies: [{ id: 0, row: 6, col: 1 }, { id: 1, row: 4, col: 5 }],
+  },
+  {
+    id: 'collision-course',
+    name: '历史冲撞',
+    focus: '敌人撞击与扰动',
+    difficulty: '进阶',
+    briefing: '历史中的敌人移动拥有目标格优先权。若本体挡在终点，会沿敌人移动方向被撞开；用击退改变敌人位置会让它从下一回合清醒。',
+    hint: '提示：不要站在橙色虚线历史移动终点与空洞之间。被击退的固定敌人当前意图会失效，下一回合重新实时反应。',
+    lives: 3, playerHp: 3, playerAtk: 1, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 2, pushEnabled: true,
+    playerStart: { row: 7, col: 0 },
+    walls: [[1,1], [2,1], [3,1], [4,5], [5,5], [6,5]],
+    holes: [[6,3], [3,3], [1,6]],
+    enemies: [{ id: 0, row: 5, col: 2 }, { id: 1, row: 2, col: 5 }, { id: 2, row: 5, col: 7 }],
+  },
+  {
+    id: 'falling-timeline',
+    name: '坠落时间线',
+    focus: '多线击退编排',
+    difficulty: '综合挑战',
+    briefing: '空洞把战场切成危险通道。编排不同时间线的攻击方向，让过去的你把现在的敌人推入正确的空洞，同时避开历史冲撞。',
+    hint: '提示：分身攻击同样保留原来的击退方向；目标格换成新的敌人时，伤害与击退仍会照常生效。',
+    lives: 3, playerHp: 4, playerAtk: 1, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 2, pushEnabled: true,
+    playerStart: { row: 7, col: 0 },
+    walls: [[1,3], [2,3], [5,3], [6,3], [3,1], [4,6]],
+    holes: [[6,1], [4,2], [3,5], [1,6]],
+    enemies: [
+      { id: 0, row: 5, col: 1 },
+      { id: 1, row: 4, col: 3 },
+      { id: 2, row: 2, col: 5 },
+      { id: 3, row: 5, col: 7 },
+    ],
+  },
 ];
 
 let activeLevelIndex = 0;
@@ -350,6 +393,7 @@ let ENEMY_ATK = 2;
 let ENEMY_MOVE = 2;
 let MAX_LIVES = 2;
 let WALLS = [];
+let HOLES = [];
 let INITIAL_ENEMIES = [];
 let PLAYER_START = { row: 7, col: 0 };
 
@@ -363,6 +407,7 @@ function applyLevelConfig(level) {
   ENEMY_MOVE = level.enemyMove;
   MAX_LIVES = level.lives;
   WALLS = level.walls.map(cell => [...cell]);
+  HOLES = (level.holes || []).map(cell => [...cell]);
   PLAYER_START = { ...level.playerStart };
   INITIAL_ENEMIES = level.enemies.map(enemy => ({ ...enemy, hp: enemy.hp ?? ENEMY_HP, maxHp: enemy.hp ?? ENEMY_HP }));
 }
@@ -388,12 +433,18 @@ function createGame() {
     gameOver: false,
     victory: false,
     enemyHistory: {}, // turn -> array of enemy intents (fixed history)
+    enemyAwakeFrom: {}, // enemyId -> first turn that recomputes AI in this timeline
+    hasReactiveEnemies: false,
   };
 }
 
 // ============ HELPERS ============
 function isWall(r, c) {
   return WALLS.some(([wr, wc]) => wr === r && wc === c);
+}
+
+function isHole(r, c) {
+  return HOLES.some(([hr, hc]) => hr === r && hc === c);
 }
 
 function isInBounds(r, c) {
@@ -418,7 +469,7 @@ function getReachable(startR, startC, range) {
     for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
       const nr = r + dr, nc = c + dc;
       const key = `${nr},${nc}`;
-      if (!isInBounds(nr, nc) || visited.has(key) || isWall(nr, nc)) continue;
+      if (!isInBounds(nr, nc) || visited.has(key) || isWall(nr, nc) || isHole(nr, nc)) continue;
       if (game?.enemies.some(enemy => enemy.hp > 0 && enemy.row === nr && enemy.col === nc)) continue;
       visited.add(key);
       queue.push({ r: nr, c: nc, dist: dist + 1 });
@@ -440,83 +491,169 @@ function getAttackTargets(r, c) {
 }
 
 // ============ ENEMY AI ============
+function isEnemyAwake(enemyId) {
+  return (game.enemyAwakeFrom[enemyId] ?? Infinity) <= game.turn;
+}
+
+function computeReactiveIntent(enemy) {
+  const target = game.player;
+  const dist = manhattan(enemy.row, enemy.col, target.row, target.col);
+  let curR = enemy.row, curC = enemy.col;
+  let lastMove = { dr: 0, dc: 0 };
+
+  if (dist > 1) {
+    for (let step = 0; step < ENEMY_MOVE; step++) {
+      let bestDir = null;
+      let bestDist = manhattan(curR, curC, target.row, target.col);
+      for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+        const nr = curR + dr, nc = curC + dc;
+        if (!isInBounds(nr, nc) || isWall(nr, nc) || isHole(nr, nc)) continue;
+        if (game.enemies.some(e => e.id !== enemy.id && e.hp > 0 && e.row === nr && e.col === nc)) continue;
+        const d = manhattan(nr, nc, target.row, target.col);
+        if (d < bestDist) { bestDist = d; bestDir = [dr, dc]; }
+      }
+      if (!bestDir) break;
+      curR += bestDir[0];
+      curC += bestDir[1];
+      lastMove = { dr: bestDir[0], dc: bestDir[1] };
+      if (manhattan(curR, curC, target.row, target.col) <= 1) break;
+    }
+  }
+
+  const didMove = (curR !== enemy.row || curC !== enemy.col);
+  const adjacentAfter = manhattan(curR, curC, target.row, target.col) <= 1;
+  const base = {
+    enemyId: enemy.id,
+    fromRow: enemy.row, fromCol: enemy.col,
+    moveDr: lastMove.dr, moveDc: lastMove.dc,
+    valid: true,
+  };
+
+  if (didMove && adjacentAfter) {
+    return { ...base, type: 'move_attack', toRow: curR, toCol: curC, targetRow: target.row, targetCol: target.col };
+  }
+  if (didMove) return { ...base, type: 'move', toRow: curR, toCol: curC };
+  if (adjacentAfter) return { ...base, type: 'attack', targetRow: target.row, targetCol: target.col };
+  return { ...base, type: 'wait' };
+}
+
 function computeEnemyIntents() {
-  // Check fixed history first
-  if (game.enemyHistory[game.turn]) {
-    return game.enemyHistory[game.turn].map(intent => {
-      const enemy = game.enemies.find(e => e.id === intent.enemyId);
-      if (!enemy || enemy.hp <= 0) return { ...intent, valid: false };
-      return { ...intent, valid: true };
+  const history = game.enemyHistory[game.turn];
+  if (history) {
+    return game.enemies.filter(enemy => enemy.hp > 0).map(enemy => {
+      if (isEnemyAwake(enemy.id)) {
+        return { enemyId: enemy.id, type: 'reactive', reactive: true, valid: true };
+      }
+      const intent = history.find(item => item.enemyId === enemy.id);
+      return intent ? { ...intent, valid: true } : { enemyId: enemy.id, type: 'wait', valid: true };
     });
   }
 
-  // Generate new intents
-  const intents = [];
-  for (const enemy of game.enemies) {
-    if (enemy.hp <= 0) continue;
+  const intents = game.enemies.filter(enemy => enemy.hp > 0).map(computeReactiveIntent);
+  game.enemyHistory[game.turn] = intents.map(intent => ({ ...intent }));
+  return intents;
+}
 
-    const target = game.player;
-    const dist = manhattan(enemy.row, enemy.col, target.row, target.col);
+function replaceHistoryIntent(intent) {
+  const history = game.enemyHistory[game.turn] || [];
+  const withoutEnemy = history.filter(item => item.enemyId !== intent.enemyId);
+  game.enemyHistory[game.turn] = [...withoutEnemy, { ...intent }].sort((a, b) => a.enemyId - b.enemyId);
+}
 
-    // Move toward player (up to ENEMY_MOVE steps)
-    let curR = enemy.row, curC = enemy.col;
-    if (dist > 1) {
-      for (let step = 0; step < ENEMY_MOVE; step++) {
-        let bestDir = null, bestDist = manhattan(curR, curC, target.row, target.col);
-        for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
-          const nr = curR + dr, nc = curC + dc;
-          if (!isInBounds(nr, nc) || isWall(nr, nc)) continue;
-          if (game.enemies.some(e => e.id !== enemy.id && e.hp > 0 && e.row === nr && e.col === nc)) continue;
-          const d = manhattan(nr, nc, target.row, target.col);
-          if (d < bestDist) { bestDist = d; bestDir = [dr, dc]; }
-        }
-        if (bestDir) {
-          curR += bestDir[0];
-          curC += bestDir[1];
-          if (manhattan(curR, curC, target.row, target.col) <= 1) break;
-        } else {
-          break;
-        }
-      }
-    }
+function markEnemyDisturbed(enemy) {
+  if (!game.enemyHistory[game.turn] || game.timeline <= 1) return;
+  const wakeTurn = game.turn + 1;
+  game.enemyAwakeFrom[enemy.id] = Math.min(game.enemyAwakeFrom[enemy.id] ?? Infinity, wakeTurn);
+  addLog(`敌人 #${enemy.id} 被击退并发生扰动，将从回合 ${wakeTurn} 开始清醒。`, 'danger');
+}
 
-    // Build intent: move (if moved) + attack (if adjacent after move)
-    const didMove = (curR !== enemy.row || curC !== enemy.col);
-    const adjacentAfter = manhattan(curR, curC, target.row, target.col) <= 1;
+function isOccupiedByEnemy(row, col, excludeId = null) {
+  return game.enemies.some(enemy => enemy.id !== excludeId && enemy.hp > 0 && enemy.row === row && enemy.col === col);
+}
 
-    if (didMove && adjacentAfter) {
-      intents.push({
-        enemyId: enemy.id,
-        type: 'move_attack',
-        fromRow: enemy.row, fromCol: enemy.col,
-        toRow: curR, toCol: curC,
-        targetRow: target.row, targetCol: target.col,
-        valid: true,
-      });
-    } else if (didMove) {
-      intents.push({
-        enemyId: enemy.id,
-        type: 'move',
-        fromRow: enemy.row, fromCol: enemy.col,
-        toRow: curR, toCol: curC,
-        valid: true,
-      });
-    } else if (adjacentAfter) {
-      intents.push({
-        enemyId: enemy.id,
-        type: 'attack',
-        fromRow: enemy.row, fromCol: enemy.col,
-        targetRow: target.row, targetCol: target.col,
-        valid: true,
-      });
+function knockEnemyBack(enemy, dr, dc, sourceLabel) {
+  if (!activeLevel.pushEnabled || enemy.hp <= 0) return false;
+  const nextRow = enemy.row + dr;
+  const nextCol = enemy.col + dc;
+
+  if (isHole(nextRow, nextCol)) {
+    enemy.hp = 0;
+    addLog(`${sourceLabel}将敌人 #${enemy.id} 推入时间空洞，敌人坠落消失！`, 'important');
+    flashCell(nextRow, nextCol, 'flash-kill');
+    return true;
+  }
+  if (!isInBounds(nextRow, nextCol) || isWall(nextRow, nextCol) || isOccupiedByEnemy(nextRow, nextCol, enemy.id) || (game.player.row === nextRow && game.player.col === nextCol)) {
+    addLog(`${sourceLabel}的击退受阻，敌人 #${enemy.id} 留在原地。`);
+    return false;
+  }
+
+  enemy.row = nextRow;
+  enemy.col = nextCol;
+  addLog(`${sourceLabel}将敌人 #${enemy.id} 推到 (${nextRow},${nextCol})。`, 'important');
+  markEnemyDisturbed(enemy);
+  return true;
+}
+
+function knockPlayerBack(dr, dc, sourceLabel) {
+  if (!activeLevel.pushEnabled || game.player.hp <= 0) return false;
+  const nextRow = game.player.row + dr;
+  const nextCol = game.player.col + dc;
+
+  if (isHole(nextRow, nextCol)) {
+    game.player.hp = 0;
+    addLog(`${sourceLabel}将本体推入时间空洞！`, 'danger');
+    return true;
+  }
+  if (!isInBounds(nextRow, nextCol) || isWall(nextRow, nextCol) || isOccupiedByEnemy(nextRow, nextCol)) {
+    addLog(`${sourceLabel}的击退受阻，本体留在原地。`, 'danger');
+    return false;
+  }
+
+  game.player.row = nextRow;
+  game.player.col = nextCol;
+  addLog(`${sourceLabel}将本体推到 (${nextRow},${nextCol})。`, 'danger');
+  return true;
+}
+
+function getIntentMoveDirection(intent) {
+  if (intent.moveDr || intent.moveDc) return { dr: intent.moveDr, dc: intent.moveDc };
+  const rowDelta = (intent.toRow ?? intent.fromRow) - intent.fromRow;
+  const colDelta = (intent.toCol ?? intent.fromCol) - intent.fromCol;
+  if (Math.abs(rowDelta) >= Math.abs(colDelta) && rowDelta !== 0) return { dr: Math.sign(rowDelta), dc: 0 };
+  return { dr: 0, dc: Math.sign(colDelta) };
+}
+
+function moveEnemyWithCollision(enemy, intent, isFixedIntent) {
+  if (isFixedIntent && (enemy.row !== intent.fromRow || enemy.col !== intent.fromCol)) {
+    addLog(`敌人 #${enemy.id} 已偏离历史起点，锁定移动失效。`);
+    return false;
+  }
+  if (isOccupiedByEnemy(intent.toRow, intent.toCol, enemy.id)) {
+    addLog(`敌人 #${enemy.id} 的目标格被占据，移动失效。`);
+    return false;
+  }
+
+  if (game.player.row === intent.toRow && game.player.col === intent.toCol) {
+    const { dr, dc } = getIntentMoveDirection(intent);
+    const pushedRow = game.player.row + dr;
+    const pushedCol = game.player.col + dc;
+    if (isHole(pushedRow, pushedCol)) {
+      game.player.hp = 0;
+      addLog(`敌人 #${enemy.id} 按历史冲入目标格，将本体撞进时间空洞！`, 'danger');
+    } else if (!isInBounds(pushedRow, pushedCol) || isWall(pushedRow, pushedCol) || isOccupiedByEnemy(pushedRow, pushedCol)) {
+      game.player.hp = 0;
+      addLog(`敌人 #${enemy.id} 按历史冲入目标格，本体无处退让并被时间挤压！`, 'danger');
     } else {
-      intents.push({ enemyId: enemy.id, type: 'wait', valid: true });
+      game.player.row = pushedRow;
+      game.player.col = pushedCol;
+      addLog(`敌人 #${enemy.id} 按历史冲入目标格，将本体撞到 (${pushedRow},${pushedCol})。`, 'danger');
     }
   }
 
-  // Save to history
-  game.enemyHistory[game.turn] = intents.map(i => ({ ...i }));
-  return intents;
+  enemy.row = intent.toRow;
+  enemy.col = intent.toCol;
+  addLog(`敌人 #${enemy.id} 移动到 (${intent.toRow},${intent.toCol})`);
+  return true;
 }
 
 // ============ GHOST REPLAY ============
@@ -593,18 +730,26 @@ async function executeGhostActions() {
         await sleep(200);
         targetEnemy.hp -= PLAYER_ATK;
         addLog(`分身 T${action.ghostIndex + 1} 攻击 (${action.targetRow},${action.targetCol}) → 敌人受到 ${PLAYER_ATK} 伤害`, 'ghost-log');
-        render();
-        flashCell(action.targetRow, action.targetCol, 'flash-hit');
         if (targetEnemy.hp <= 0) {
           addLog(`敌人 #${targetEnemy.id} 被分身击杀！`, 'important');
-          flashCell(action.targetRow, action.targetCol, 'flash-kill');
+        } else {
+          const pushDr = action.pushDr ?? (action.targetRow - action.fromRow);
+          const pushDc = action.pushDc ?? (action.targetCol - action.fromCol);
+          knockEnemyBack(targetEnemy, pushDr, pushDc, `分身 T${action.ghostIndex + 1}`);
         }
+        render();
+        flashCell(action.targetRow, action.targetCol, targetEnemy.hp <= 0 ? 'flash-kill' : 'flash-hit');
         await sleep(350);
       } else if (game.player.row === action.targetRow && game.player.col === action.targetCol) {
         flashCell(action.fromRow, action.fromCol, 'flash-ghost-attack');
         await sleep(200);
         game.player.hp -= PLAYER_ATK;
         addLog(`分身 T${action.ghostIndex + 1} 友军伤害！本体受到 ${PLAYER_ATK} 伤害`, 'danger');
+        if (game.player.hp > 0) {
+          const pushDr = action.pushDr ?? (action.targetRow - action.fromRow);
+          const pushDc = action.pushDc ?? (action.targetCol - action.fromCol);
+          knockPlayerBack(pushDr, pushDc, `分身 T${action.ghostIndex + 1}`);
+        }
         render();
         flashCell(game.player.row, game.player.col, 'flash-hit');
         await sleep(400);
@@ -650,45 +795,44 @@ function sleep(ms) {
 
 // ============ ENEMY EXECUTION ============
 async function executeEnemyPhase() {
-  // Reactive mode: compute intents NOW based on player's actual position
   if (game.enemyReactive) {
     game.enemyIntents = computeEnemyIntents();
   }
 
-  const intents = game.enemyIntents;
-  for (const intent of intents) {
-    if (!intent.valid) continue;
-    const enemy = game.enemies.find(e => e.id === intent.enemyId);
+  for (const queuedIntent of game.enemyIntents) {
+    if (!queuedIntent.valid) continue;
+    const enemy = game.enemies.find(e => e.id === queuedIntent.enemyId);
     if (!enemy || enemy.hp <= 0) continue;
 
-    if (intent.type === 'move') {
-      enemy.row = intent.toRow;
-      enemy.col = intent.toCol;
-      addLog(`敌人 #${enemy.id} 移动到 (${intent.toRow},${intent.toCol})`);
+    const wasReactive = Boolean(queuedIntent.reactive);
+    const intent = wasReactive ? computeReactiveIntent(enemy) : queuedIntent;
+    if (wasReactive) {
+      replaceHistoryIntent(intent);
+      addLog(`[扰动] 敌人 #${enemy.id} 重新观察战场并决定行动。`, 'danger');
+    }
+    const isFixedIntent = !game.enemyReactive && !wasReactive;
+    const positionChanged = enemy.row !== intent.fromRow || enemy.col !== intent.fromCol;
+    if (isFixedIntent && positionChanged && intent.type !== 'wait') {
+      addLog(`敌人 #${enemy.id} 已偏离历史起点，锁定行动失效。`);
+      continue;
+    }
+
+    if (intent.type === 'move' || intent.type === 'move_attack') {
+      const moved = moveEnemyWithCollision(enemy, intent, isFixedIntent);
       render();
-      flashCell(intent.toRow, intent.toCol, 'flash-move');
-      await sleep(350);
-    } else if (intent.type === 'attack') {
-      if (game.player.row === intent.targetRow && game.player.col === intent.targetCol) {
-        flashCell(enemy.row, enemy.col, 'flash-attack');
-        await sleep(200);
-        game.player.hp -= ENEMY_ATK;
-        addLog(`敌人 #${enemy.id} 攻击本体 → ${ENEMY_ATK} 伤害`, 'danger');
-        render();
-        flashCell(game.player.row, game.player.col, 'flash-hit');
-        await sleep(400);
-      } else {
-        addLog(`敌人 #${enemy.id} 攻击 (${intent.targetRow},${intent.targetCol}) → 本体已离开，失效`);
-        flashCell(intent.targetRow, intent.targetCol, 'flash-attack');
-        await sleep(300);
-      }
-    } else if (intent.type === 'move_attack') {
-      enemy.row = intent.toRow;
-      enemy.col = intent.toCol;
-      addLog(`敌人 #${enemy.id} 移动到 (${intent.toRow},${intent.toCol})`);
-      render();
-      flashCell(intent.toRow, intent.toCol, 'flash-move');
-      await sleep(300);
+      if (moved) flashCell(intent.toRow, intent.toCol, 'flash-move');
+      await sleep(moved ? 350 : 180);
+      if (!moved) continue;
+    }
+
+    if (game.player.hp <= 0) {
+      flashCell(game.player.row, game.player.col, 'flash-kill');
+      await sleep(500);
+      handlePlayerDeath();
+      return true;
+    }
+
+    if (intent.type === 'attack' || intent.type === 'move_attack') {
       if (game.player.row === intent.targetRow && game.player.col === intent.targetCol) {
         flashCell(enemy.row, enemy.col, 'flash-attack');
         await sleep(200);
@@ -733,9 +877,11 @@ function startTurn() {
   if (hasHistory) {
     game.enemyIntents = computeEnemyIntents();
     game.enemyReactive = false;
+    game.hasReactiveEnemies = game.enemyIntents.some(intent => intent.reactive);
   } else {
     game.enemyIntents = [];
     game.enemyReactive = true;
+    game.hasReactiveEnemies = true;
   }
 
   setPhaseText('分身执行中...');
@@ -745,6 +891,10 @@ function startTurn() {
   if (hasHistory) {
     for (const intent of game.enemyIntents) {
       if (!intent.valid) continue;
+      if (intent.reactive) {
+        addLog(`[扰动] 敌人 #${intent.enemyId} 已清醒，将在本体行动后重新决策。`, 'danger');
+        continue;
+      }
       if (intent.type === 'attack') {
         addLog(`[预知] 敌人 #${intent.enemyId} 将攻击 (${intent.targetRow},${intent.targetCol})`);
       } else if (intent.type === 'move') {
@@ -822,6 +972,8 @@ function handleCellClick(r, c) {
         type: 'attack',
         fromRow: game.player.row, fromCol: game.player.col,
         targetRow: r, targetCol: c,
+        pushDr: r - game.player.row,
+        pushDc: c - game.player.col,
       });
       flashCell(game.player.row, game.player.col, 'flash-attack');
       enemy.hp -= PLAYER_ATK;
@@ -831,6 +983,7 @@ function handleCellClick(r, c) {
         addLog(`敌人 #${enemy.id} 被击杀！`, 'important');
         flashCell(r, c, 'flash-kill');
       } else {
+        knockEnemyBack(enemy, r - game.player.row, c - game.player.col, '本体攻击');
         flashCell(r, c, 'flash-hit');
       }
 
@@ -926,6 +1079,8 @@ function startNextTimeline() {
   game.currentRecording = [];
   game.moveRange = [];
   game.attackRange = [];
+  game.enemyAwakeFrom = {};
+  game.hasReactiveEnemies = false;
   // Reset ghost positions
   for (const ghost of game.ghosts) {
     ghost.currentRow = PLAYER_START.row;
@@ -1020,6 +1175,7 @@ function renderLevelSelect() {
         <span class="level-tag">${level.difficulty}</span>
         <span class="level-tag">${level.lives} 条命</span>
         <span class="level-tag">${level.enemies.length} 名敌人</span>
+        ${level.pushEnabled ? '<span class="level-tag">击退</span><span class="level-tag">时间空洞</span>' : ''}
       </span>
       <span class="level-result">${result ? `✓ 最佳：T${result.timelines} · ${result.turns} 回合` : `验证：${level.focus}`}</span>
     `;
@@ -1043,6 +1199,9 @@ function render() {
       if (isWall(r, c)) {
         cell.classList.add('wall');
         cell.innerHTML = '<span class="unit">█</span>';
+      } else if (isHole(r, c)) {
+        cell.classList.add('hole');
+        cell.innerHTML = '<span class="unit">◉</span>';
       } else {
         // Highlight ranges
         if (game.moveRange.some(m => m.r === r && m.c === c)) {
@@ -1053,6 +1212,13 @@ function render() {
         }
         const ghostFire = getGhostAttacksForTurn(game.turn).some(a => a.targetRow === r && a.targetCol === c);
         if (ghostFire) cell.classList.add('ghost-fire');
+        const enemyMoveTarget = !game.enemyReactive && game.enemyIntents?.some(intent =>
+          !intent.reactive && intent.valid && (intent.type === 'move' || intent.type === 'move_attack') && intent.toRow === r && intent.toCol === c
+        );
+        if (enemyMoveTarget) {
+          cell.classList.add('enemy-move-target');
+          cell.title = '敌人的历史移动终点：本体站在这里会被撞开';
+        }
 
         // Mark ghost end-of-turn positions as blocked during player phase
         if (game.phase === 'player_move' || game.phase === 'player_attack') {
@@ -1119,9 +1285,16 @@ function setPhaseText(text) {
 
 function updateTimelinePanel() {
   const state = document.getElementById('time-state');
-  const known = !game.enemyReactive;
-  state.textContent = known ? '已知时间' : '未知时间';
-  state.className = known ? 'known' : 'unknown';
+  if (game.enemyReactive) {
+    state.textContent = '未知时间';
+    state.className = 'unknown';
+  } else if (game.hasReactiveEnemies) {
+    state.textContent = '扰动时间';
+    state.className = 'disturbed';
+  } else {
+    state.textContent = '已知时间';
+    state.className = 'known';
+  }
 
   const preview = document.getElementById('ghost-preview');
   if (game.ghosts.length === 0) {
