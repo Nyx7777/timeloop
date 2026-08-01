@@ -17,7 +17,66 @@ body {
   padding: 12px;
   overflow-x: hidden;
 }
-h1 { font-size: 16px; margin-bottom: 6px; color: #7fdbca; }
+h1 { font-size: 18px; margin-bottom: 6px; color: #7fdbca; }
+.hidden { display: none !important; }
+.screen { width: 100%; }
+#level-select {
+  width: min(760px, calc(100vw - 24px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+}
+.select-kicker { color: #7fdbca; font-size: 12px; letter-spacing: 0.14em; margin-bottom: 8px; }
+#level-select h1 { font-size: 26px; margin-bottom: 8px; }
+.select-intro { color: #aaa; font-size: 13px; line-height: 1.7; margin-bottom: 22px; }
+#level-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.level-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 180px;
+  padding: 16px;
+  text-align: left;
+  background: #23233a;
+  border: 1px solid #494963;
+  border-radius: 8px;
+}
+.level-card:hover { background: #2c2c48; border-color: #7fdbca; }
+.level-card.completed { border-color: #4e8f80; }
+.level-number { color: #7fdbca; font-size: 11px; letter-spacing: 0.12em; }
+.level-card h2 { margin: 8px 0 6px; font-size: 18px; color: #fff; }
+.level-card p { color: #aaa; font-size: 12px; line-height: 1.55; flex: 1; }
+.level-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.level-tag { padding: 3px 7px; border-radius: 999px; background: #343451; color: #c7c7d8; font-size: 10px; }
+.level-result { margin-top: 10px; color: #7fdbca; font-size: 11px; }
+#game-screen { display: flex; flex-direction: column; align-items: center; }
+#game-header {
+  width: min(490px, calc(100vw - 24px));
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 6px;
+}
+#game-header h1 { margin: 0; }
+.small-button { min-height: 34px; padding: 6px 10px; font-size: 11px; }
+#mission-panel, #timeline-panel {
+  width: min(490px, calc(100vw - 24px));
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid #3d3d55;
+  background: #222237;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+#mission-title { color: #fff; font-weight: bold; }
+#mission-text { color: #aaa; margin-top: 2px; }
+#timeline-panel { display: flex; align-items: flex-start; gap: 8px; }
+#time-state { flex: 0 0 auto; padding: 3px 7px; border-radius: 3px; font-weight: bold; }
+#time-state.known { background: #23443d; color: #7fdbca; }
+#time-state.unknown { background: #4a3524; color: #f1b56b; }
+#ghost-preview { color: #b9a2d5; flex: 1; }
 #info-bar {
   display: flex; gap: 12px; margin-bottom: 8px;
   font-size: 13px; color: #aaa;
@@ -50,6 +109,7 @@ h1 { font-size: 16px; margin-bottom: 6px; color: #7fdbca; }
 .cell.move-range { background: #2a4a3e; }
 .cell.attack-range { background: #4a2a2a; }
 .cell.ghost-path { background: #2a2a4a; }
+.cell.ghost-fire { box-shadow: inset 0 0 0 2px rgba(185, 110, 255, 0.8); }
 .cell.flash-move { animation: flashMove 0.4s ease; }
 .cell.flash-attack { animation: flashAttack 0.4s ease; }
 .cell.flash-hit { animation: flashHit 0.5s ease; }
@@ -164,17 +224,42 @@ button.primary { background: #2e7d6a; border-color: #7fdbca; }
 }
 #modal h2 { color: #7fdbca; margin-bottom: 10px; font-size: 18px; }
 #modal p { margin-bottom: 14px; font-size: 13px; line-height: 1.6; }
+#modal p { white-space: pre-line; }
 #modal button { margin: 4px 6px; }
+@media (max-width: 620px) {
+  #level-grid { grid-template-columns: 1fr; }
+  #level-select { padding-top: 16px; }
+  #game-header { align-items: flex-start; }
+}
 </style>
 </head>
 <body>
-<h1>时间循环战术 — 灰盒 Demo</h1>
+<section id="level-select" class="screen">
+  <div class="select-kicker">PLAYTEST BUILD · 04</div>
+  <h1>时间循环战术</h1>
+  <p class="select-intro">四个灰盒关卡分别验证一种核心体验。建议按顺序游玩，也可以直接选择任意关卡。</p>
+  <div id="level-grid"></div>
+</section>
+
+<section id="game-screen" class="screen hidden">
+<div id="game-header">
+  <h1>时间循环战术 — 灰盒 Demo</h1>
+  <button id="btn-level-select" class="small-button">选择关卡</button>
+</div>
+<div id="mission-panel">
+  <div id="mission-title"></div>
+  <div id="mission-text"></div>
+</div>
 <div id="phase-indicator">阶段：等待开始</div>
 <div id="info-bar">
   时间线：<span id="timeline-num">T1</span> |
-  命数：<span id="lives-left">2</span> |
+  命数：<span id="lives-left">—</span> |
   回合：<span id="turn-num">1</span> |
-  HP：<span id="player-hp">3/3</span>
+  HP：<span id="player-hp">—</span>
+</div>
+<div id="timeline-panel">
+  <span id="time-state" class="unknown">未知时间</span>
+  <span id="ghost-preview">本回合还没有分身行动。</span>
 </div>
 <div id="board"></div>
 <div id="controls">
@@ -183,6 +268,7 @@ button.primary { background: #2e7d6a; border-color: #7fdbca; }
   <button id="btn-restart-battle">重开整场</button>
 </div>
 <div id="log"></div>
+</section>
 <div id="modal-overlay">
   <div id="modal">
     <h2 id="modal-title"></h2>
@@ -194,31 +280,92 @@ button.primary { background: #2e7d6a; border-color: #7fdbca; }
 <script>
 // ============ GAME CONFIG ============
 const GRID = 8;
-const PLAYER_HP = 3;
-const PLAYER_ATK = 2;
-const PLAYER_MOVE = 3;
-const ENEMY_HP = 3;
-const ENEMY_ATK = 2;
-const ENEMY_MOVE = 2;
-const MAX_LIVES = 3;
-
-// Walls (row, col)
-const WALLS = [
-  [2, 2], [2, 3],
-  [5, 4], [5, 5],
-  [3, 6],
-  [6, 1],
+const LEVELS = [
+  {
+    id: 'first-echo',
+    name: '留下第一个自己',
+    focus: '第一次时间协作',
+    difficulty: '教学',
+    briefing: '守卫比一条命更耐打。靠近并攻击它，让上一条时间线的你为下一条时间线补上第二击。',
+    hint: '提示：从绿色格移动到敌人身边，再点击红色敌人格攻击。第一次失败不是重来，而是在制作队友。',
+    lives: 2, playerHp: 2, playerAtk: 2, playerMove: 3,
+    enemyHp: 4, enemyAtk: 2, enemyMove: 1,
+    playerStart: { row: 7, col: 0 },
+    walls: [[4,2], [5,2], [6,2]],
+    enemies: [{ id: 0, row: 5, col: 1 }],
+  },
+  {
+    id: 'crossed-paths',
+    name: '双线交错',
+    focus: '主动固化与占位',
+    difficulty: '基础',
+    briefing: '两名守卫分居通道两端。规划第一条时间线的站位和攻击，再主动固化，让两个自己同时推进。',
+    hint: '提示：固化会立刻把当前行动写成分身。紫色边框是分身本回合的最终占位，本体不能停在那里。',
+    lives: 2, playerHp: 4, playerAtk: 2, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 1,
+    playerStart: { row: 7, col: 3 },
+    walls: [[3,2], [3,3], [3,4], [5,1], [5,5], [6,1], [6,5]],
+    enemies: [{ id: 0, row: 4, col: 1 }, { id: 1, row: 4, col: 5 }],
+  },
+  {
+    id: 'known-future',
+    name: '已知的未来',
+    focus: '固定历史与诱导',
+    difficulty: '进阶',
+    briefing: '第一次经历时，敌人会实时追踪；下一条时间线中，它们会重复已经发生的选择。利用预知改变第二次交锋。',
+    hint: '提示：橙色“未知时间”没有敌方预告；绿色“已知时间”会锁定历史。敌人的红色攻击格不会临时追踪你。',
+    lives: 3, playerHp: 3, playerAtk: 2, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 2,
+    playerStart: { row: 7, col: 0 },
+    walls: [[2,2], [2,3], [4,4], [5,4], [6,1]],
+    enemies: [{ id: 0, row: 2, col: 6 }, { id: 1, row: 5, col: 2 }, { id: 2, row: 4, col: 6 }],
+  },
+  {
+    id: 'purple-crossfire',
+    name: '紫色交火区',
+    focus: '多分身与友军火线',
+    difficulty: '压力测试',
+    briefing: '多个分身会按旧到新的顺序重演。避开紫色火线与时间排斥，在混乱中完成最后一次编排。',
+    hint: '提示：紫色描边格是本回合分身的攻击目标；分身会误伤本体，也可能替你击杀站进原目标格的新敌人。',
+    lives: 3, playerHp: 3, playerAtk: 2, playerMove: 3,
+    enemyHp: 3, enemyAtk: 2, enemyMove: 2,
+    playerStart: { row: 7, col: 0 },
+    walls: [[2,2], [2,3], [5,4], [5,5], [3,6], [6,1]],
+    enemies: [
+      { id: 0, row: 1, col: 6 },
+      { id: 1, row: 5, col: 2 },
+      { id: 2, row: 6, col: 6 },
+      { id: 3, row: 3, col: 1 },
+    ],
+  },
 ];
 
-// Initial enemy positions and patrol data
-const INITIAL_ENEMIES = [
-  { id: 0, row: 1, col: 6, hp: ENEMY_HP },
-  { id: 1, row: 5, col: 2, hp: ENEMY_HP },
-  { id: 2, row: 6, col: 6, hp: ENEMY_HP },
-  { id: 3, row: 3, col: 1, hp: ENEMY_HP },
-];
+let activeLevelIndex = 0;
+let activeLevel = LEVELS[activeLevelIndex];
+let PLAYER_HP = 3;
+let PLAYER_ATK = 2;
+let PLAYER_MOVE = 3;
+let ENEMY_HP = 3;
+let ENEMY_ATK = 2;
+let ENEMY_MOVE = 2;
+let MAX_LIVES = 2;
+let WALLS = [];
+let INITIAL_ENEMIES = [];
+let PLAYER_START = { row: 7, col: 0 };
 
-const PLAYER_START = { row: 7, col: 0 };
+function applyLevelConfig(level) {
+  activeLevel = level;
+  PLAYER_HP = level.playerHp;
+  PLAYER_ATK = level.playerAtk;
+  PLAYER_MOVE = level.playerMove;
+  ENEMY_HP = level.enemyHp;
+  ENEMY_ATK = level.enemyAtk;
+  ENEMY_MOVE = level.enemyMove;
+  MAX_LIVES = level.lives;
+  WALLS = level.walls.map(cell => [...cell]);
+  PLAYER_START = { ...level.playerStart };
+  INITIAL_ENEMIES = level.enemies.map(enemy => ({ ...enemy, hp: enemy.hp ?? ENEMY_HP, maxHp: enemy.hp ?? ENEMY_HP }));
+}
 
 // ============ GAME STATE ============
 let game = null;
@@ -272,7 +419,7 @@ function getReachable(startR, startC, range) {
       const nr = r + dr, nc = c + dc;
       const key = `${nr},${nc}`;
       if (!isInBounds(nr, nc) || visited.has(key) || isWall(nr, nc)) continue;
-      // Can't stop on living enemy
+      if (game?.enemies.some(enemy => enemy.hp > 0 && enemy.row === nr && enemy.col === nc)) continue;
       visited.add(key);
       queue.push({ r: nr, c: nc, dist: dist + 1 });
     }
@@ -730,6 +877,7 @@ function handlePlayerDeath() {
     setPhaseText('战斗失败');
     showModal('战斗失败', '所有命数已耗尽。时间线崩坏。', [
       { text: '重开整场', action: restartBattle },
+      { text: '返回选关', action: returnToLevelSelect },
     ]);
   } else {
     // Save recording as ghost
@@ -754,8 +902,17 @@ function handleVictory() {
 
   const timelineCount = game.timeline;
   const turnCount = game.turn;
-  showModal('战斗胜利！', `用了 ${timelineCount} 条时间线，${turnCount} 回合完成战斗。\n${timelineCount === 1 ? '一条命通关！完美！' : '时间编排成功！'}`, [
+  saveLevelResult(activeLevel.id, timelineCount, turnCount);
+  const nextLevel = LEVELS[activeLevelIndex + 1];
+  const buttons = [
     { text: '再来一次', action: restartBattle },
+    { text: '返回选关', action: returnToLevelSelect },
+  ];
+  if (nextLevel) {
+    buttons.unshift({ text: '下一关', action: () => startLevel(activeLevelIndex + 1) });
+  }
+  showModal('战斗胜利！', `用了 ${timelineCount} 条时间线，${turnCount} 回合完成战斗。\n${timelineCount === 1 ? '一条命通关！完美！' : '时间编排成功！'}`, [
+    ...buttons,
   ]);
   render();
 }
@@ -803,8 +960,72 @@ function restartBattle() {
   clearLog();
   game = createGame();
   addLog('══ 战斗开始 ══', 'important');
+  addLog(`目标：消灭所有敌人。你有 ${MAX_LIVES} 条命。`, 'important');
+  addLog(activeLevel.hint);
   updateInfoBar();
   startTurn();
+}
+
+function startLevel(levelIndex) {
+  activeLevelIndex = levelIndex;
+  applyLevelConfig(LEVELS[levelIndex]);
+  document.getElementById('level-select').classList.add('hidden');
+  document.getElementById('game-screen').classList.remove('hidden');
+  document.getElementById('mission-title').textContent = `${levelIndex + 1}. ${activeLevel.name} · ${activeLevel.focus}`;
+  document.getElementById('mission-text').textContent = activeLevel.briefing;
+  restartBattle();
+}
+
+function returnToLevelSelect() {
+  if (game && !game.gameOver && !game.victory && !['player_move', 'player_attack', 'player_done'].includes(game.phase)) return;
+  hideModal();
+  document.getElementById('game-screen').classList.add('hidden');
+  document.getElementById('level-select').classList.remove('hidden');
+  renderLevelSelect();
+}
+
+function readLevelResults() {
+  try {
+    return JSON.parse(localStorage.getItem('timeloop-demo-results') || '{}');
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveLevelResult(levelId, timelines, turns) {
+  const results = readLevelResults();
+  const previous = results[levelId];
+  const isBetter = !previous || timelines < previous.timelines || (timelines === previous.timelines && turns < previous.turns);
+  if (isBetter) results[levelId] = { timelines, turns };
+  try {
+    localStorage.setItem('timeloop-demo-results', JSON.stringify(results));
+  } catch (error) {
+    // The demo remains playable when storage is unavailable.
+  }
+}
+
+function renderLevelSelect() {
+  const results = readLevelResults();
+  const grid = document.getElementById('level-grid');
+  grid.innerHTML = '';
+  LEVELS.forEach((level, index) => {
+    const result = results[level.id];
+    const card = document.createElement('button');
+    card.className = `level-card${result ? ' completed' : ''}`;
+    card.innerHTML = `
+      <span class="level-number">TEST ${String(index + 1).padStart(2, '0')}</span>
+      <h2>${level.name}</h2>
+      <p>${level.briefing}</p>
+      <span class="level-meta">
+        <span class="level-tag">${level.difficulty}</span>
+        <span class="level-tag">${level.lives} 条命</span>
+        <span class="level-tag">${level.enemies.length} 名敌人</span>
+      </span>
+      <span class="level-result">${result ? `✓ 最佳：T${result.timelines} · ${result.turns} 回合` : `验证：${level.focus}`}</span>
+    `;
+    card.addEventListener('click', () => startLevel(index));
+    grid.appendChild(card);
+  });
 }
 
 // ============ UI ============
@@ -830,6 +1051,8 @@ function render() {
         if (game.attackRange.some(a => a.r === r && a.c === c)) {
           cell.classList.add('attack-range');
         }
+        const ghostFire = getGhostAttacksForTurn(game.turn).some(a => a.targetRow === r && a.targetCol === c);
+        if (ghostFire) cell.classList.add('ghost-fire');
 
         // Mark ghost end-of-turn positions as blocked during player phase
         if (game.phase === 'player_move' || game.phase === 'player_attack') {
@@ -850,7 +1073,7 @@ function render() {
         const enemy = game.enemies.find(e => e.hp > 0 && e.row === r && e.col === c);
         if (enemy) {
           cell.innerHTML = `<span class="unit">👾</span>`;
-          cell.innerHTML += `<div class="hp-bar"><div class="hp-fill enemy" style="width:${(enemy.hp/ENEMY_HP)*100}%"></div></div>`;
+          cell.innerHTML += `<div class="hp-bar"><div class="hp-fill enemy" style="width:${(enemy.hp/enemy.maxHp)*100}%"></div></div>`;
         }
 
         // Draw player (on top)
@@ -877,8 +1100,10 @@ function render() {
   const canEndTurn = (game.phase === 'player_move' || game.phase === 'player_attack' || game.phase === 'player_done') && !game.gameOver && !game.victory;
   document.getElementById('btn-end-turn').disabled = !canEndTurn;
   document.getElementById('btn-crystallize').disabled = game.livesLeft <= 1 || game.gameOver || game.victory || (game.phase !== 'player_move' && game.phase !== 'player_attack' && game.phase !== 'player_done');
+  document.getElementById('btn-level-select').disabled = !game.gameOver && !game.victory && !['player_move', 'player_attack', 'player_done'].includes(game.phase);
 
   updateInfoBar();
+  updateTimelinePanel();
 }
 
 function updateInfoBar() {
@@ -890,6 +1115,28 @@ function updateInfoBar() {
 
 function setPhaseText(text) {
   document.getElementById('phase-indicator').textContent = `阶段：${text}`;
+}
+
+function updateTimelinePanel() {
+  const state = document.getElementById('time-state');
+  const known = !game.enemyReactive;
+  state.textContent = known ? '已知时间' : '未知时间';
+  state.className = known ? 'known' : 'unknown';
+
+  const preview = document.getElementById('ghost-preview');
+  if (game.ghosts.length === 0) {
+    preview.textContent = '本回合还没有分身行动。结束一条时间线后，过去的你会出现在这里。';
+    return;
+  }
+  const summaries = game.ghosts.map((ghost, ghostIndex) => {
+    const actions = ghost.actions.filter(action => action.turn === game.turn);
+    if (actions.length === 0) return `T${ghostIndex + 1}：无行动`;
+    const text = actions.map(action => action.type === 'move'
+      ? `移动至 (${action.toRow},${action.toCol})`
+      : `攻击 (${action.targetRow},${action.targetCol})`).join(' → ');
+    return `T${ghostIndex + 1}：${text}`;
+  });
+  preview.textContent = summaries.join(' ｜ ');
 }
 
 function addLog(text, className = '') {
@@ -928,13 +1175,9 @@ function hideModal() {
 document.getElementById('btn-end-turn').addEventListener('click', endTurn);
 document.getElementById('btn-crystallize').addEventListener('click', handleCrystallize);
 document.getElementById('btn-restart-battle').addEventListener('click', restartBattle);
+document.getElementById('btn-level-select').addEventListener('click', returnToLevelSelect);
 
-game = createGame();
-addLog('══ 战斗开始 ══', 'important');
-addLog('目标：消灭所有敌人。你有 2 条命。', 'important');
-addLog('操作：点击绿色格子移动，点击红色格子攻击，或直接结束回合。');
-addLog('死亡后你的行动将成为分身录像，在下一条时间线中自动重演。');
-startTurn();
+renderLevelSelect();
 </script>
 </body>
 </html>
