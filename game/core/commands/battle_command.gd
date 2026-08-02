@@ -3,9 +3,11 @@ extends RefCounted
 
 const SCHEMA_VERSION := 1
 const MOVE: StringName = &"move"
+const ATTACK: StringName = &"attack"
 const USE_ABILITY: StringName = &"use_ability"
 const END_TURN: StringName = &"end_turn"
 const CRYSTALLIZE: StringName = &"crystallize"
+const START_NEXT_TIMELINE: StringName = &"start_next_timeline"
 
 var command_type: StringName
 var actor_id: StringName
@@ -31,10 +33,24 @@ static func use_ability(actor: StringName, ability: StringName, target: Vector2i
 	return command
 
 
+static func attack(actor: StringName, target: Vector2i) -> BattleCommand:
+	var command := BattleCommand.new()
+	command.command_type = ATTACK
+	command.actor_id = actor
+	command.target_cell = target
+	return command
+
+
 static func end_turn(actor: StringName) -> BattleCommand:
 	var command := BattleCommand.new()
 	command.command_type = END_TURN
 	command.actor_id = actor
+	return command
+
+
+static func start_next_timeline() -> BattleCommand:
+	var command := BattleCommand.new()
+	command.command_type = START_NEXT_TIMELINE
 	return command
 
 

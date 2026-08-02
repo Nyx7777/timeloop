@@ -32,6 +32,9 @@ static func create_from_level(level: LevelDefinition, seed: int = 1) -> BattleSt
 		unit.move_range = spawn.move_range
 		unit.attack_damage = spawn.attack_damage
 		state.units[unit.unit_id] = unit
+		state.unit_order.append(unit.unit_id)
+		state.initial_units[unit.unit_id] = unit.to_dict()
 		if unit.team == &"player":
 			state.player_id = unit.unit_id
+			state.player_start = unit.position
 	return state

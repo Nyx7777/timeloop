@@ -20,7 +20,17 @@ static func is_walkable(state: BattleState, cell: Vector2i, ignored_unit: String
 	return is_in_bounds(state, cell) \
 		and not state.walls.has(cell) \
 		and not state.holes.has(cell) \
-		and not is_occupied(state, cell, ignored_unit)
+		and not is_occupied(state, cell, ignored_unit) \
+		and not _is_ghost_end_occupied(state, cell)
+
+
+static func _is_ghost_end_occupied(state: BattleState, cell: Vector2i) -> bool:
+	if cell == state.player_start:
+		return false
+	for ghost_id in state.ghost_positions.keys():
+		if state.ghost_positions[ghost_id] == cell:
+			return true
+	return false
 
 
 static func find_path(state: BattleState, start: Vector2i, target: Vector2i, max_steps: int, moving_unit: StringName) -> Array[Vector2i]:

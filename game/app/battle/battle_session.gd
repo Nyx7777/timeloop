@@ -32,8 +32,11 @@ func submit(command: BattleCommand) -> CommandResult:
 			candidate.event_sequence += 1
 			event.sequence = candidate.event_sequence
 		state = candidate
-		_undo_stack.append(checkpoint)
-		_trim_checkpoints()
+		if result.commit_undo_barrier:
+			_undo_stack.clear()
+		else:
+			_undo_stack.append(checkpoint)
+			_trim_checkpoints()
 
 	_command_in_progress = false
 	return result
