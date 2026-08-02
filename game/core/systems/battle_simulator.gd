@@ -141,6 +141,8 @@ func _apply_start_next_timeline(state: BattleState) -> CommandResult:
 	events.append(BattleEvent.create(&"timeline_started", state.player_id, {
 		"timeline_index": state.timeline_index,
 		"lives_left": state.lives_left,
+		"units": _build_unit_view_data(state),
+		"ghost_positions": state.ghost_positions,
 	}))
 	_begin_turn(state, events)
 	return CommandResult.accept(events, [], true)
@@ -489,6 +491,21 @@ func _is_enemy_destination_open(state: BattleState, moving_enemy: StringName, ce
 
 func _phase_event(phase: StringName) -> BattleEvent:
 	return BattleEvent.create(&"phase_changed", &"", {"phase": phase})
+
+
+func _build_unit_view_data(state: BattleState) -> Dictionary:
+	var view_data: Dictionary = {}
+	for unit_id in state.unit_order:
+		var unit := state.get_unit(unit_id)
+		if unit != null:
+			view_data[unit.unit_id] = {
+				"position": unit.position,
+				"hp": unit.hp,
+				"max_hp": unit.max_hp,
+				"team": unit.team,
+				"active": unit.active,
+			}
+	return view_data
 
 
 func _manhattan(a: Vector2i, b: Vector2i) -> int:
