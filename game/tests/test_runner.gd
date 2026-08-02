@@ -74,6 +74,7 @@ func _test_atomic_move_and_undo() -> void:
 	_expect_equal(session.state.current_recording.size(), 1, "move creates one recorded action")
 	_expect_equal(result.events.size(), 1, "move creates one presentation event")
 	_expect_equal(result.events[0].event_type, &"unit_moved", "move event has stable type")
+	_expect_equal(result.events[0].payload.path, [Vector2i(0, 7), Vector2i(1, 7)], "move event preserves the traversed path")
 	_expect_equal(session.get_undo_count(), 1, "accepted command creates checkpoint")
 
 	var undo_result := session.undo_last_command()
@@ -106,6 +107,8 @@ func _test_reactive_enemy_movement() -> void:
 	_expect_equal(session.state.turn_index, 2, "surviving enemy phase advances the turn")
 	_expect(session.state.current_enemy_history.has(1), "unknown-time intent is recorded in current history")
 	_expect(_has_event(result, &"enemy_intents_locked"), "enemy phase publishes locked intents")
+	var intent_event := _find_event(result, &"enemy_intents_locked")
+	_expect_equal(intent_event.payload.intents[0].path, [Vector2i(1, 5), Vector2i(0, 5)], "enemy intent preserves each movement step")
 
 
 func _test_first_echo_full_timeline_loop() -> void:
@@ -113,7 +116,9 @@ func _test_first_echo_full_timeline_loop() -> void:
 	if session == null:
 		return
 
-	_expect(session.submit(BattleCommand.move(&"player", Vector2i(1, 6))).accepted, "T1 player reaches guard")
+	var opening_move := session.submit(BattleCommand.move(&"player", Vector2i(1, 6)))
+	_expect(opening_move.accepted, "T1 player reaches guard")
+	_expect_equal(opening_move.events[0].payload.path, [Vector2i(0, 7), Vector2i(1, 7), Vector2i(1, 6)], "multi-cell move exposes every traversed cell")
 	var first_attack := session.submit(BattleCommand.attack(&"player", Vector2i(1, 5)))
 	_expect(first_attack.accepted, "T1 attack is accepted")
 	_expect_equal(session.state.get_unit(&"guard_01").hp, 2, "T1 attack records fixed damage")
@@ -137,6 +142,9 @@ func _test_first_echo_full_timeline_loop() -> void:
 	_expect_equal(session.get_undo_count(), 0, "starting a committed timeline clears undo history")
 	_expect(_has_event(next_timeline, &"timeline_started"), "T2 publishes timeline-start event")
 	_expect(_has_event(next_timeline, &"attack_performed"), "ghost attack publishes presentation event")
+	var turn_started := _find_event(next_timeline, &"turn_started")
+	_expect_equal(turn_started.payload.ghost_actions.size(), 2, "turn preview exposes the ghost move and attack")
+	_expect_equal(turn_started.payload.enemy_intents.size(), 1, "known-time turn preview exposes enemy intent")
 
 	_expect(session.submit(BattleCommand.move(&"player", Vector2i(0, 5))).accepted, "T2 player avoids ghost end cell")
 	var winning_attack := session.submit(BattleCommand.attack(&"player", Vector2i(1, 5)))
@@ -168,6 +176,13 @@ func _has_event(result: CommandResult, event_type: StringName) -> bool:
 		if event.event_type == event_type:
 			return true
 	return false
+
+
+func _find_event(result: CommandResult, event_type: StringName) -> BattleEvent:
+	for event in result.events:
+		if event.event_type == event_type:
+			return event
+	return null
 
 
 func _create_session() -> BattleSession:

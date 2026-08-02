@@ -167,6 +167,7 @@ func _begin_turn(state: BattleState, events: Array[BattleEvent]) -> void:
 		"timeline_index": state.timeline_index,
 		"time_state": state.time_state,
 		"enemy_intents": state.locked_enemy_intents,
+		"ghost_actions": _build_ghost_preview(state),
 	}))
 	state.phase = BattlePhase.GHOST_PLAYBACK
 	events.append(_phase_event(state.phase))
@@ -244,6 +245,7 @@ func _compute_reactive_intent(state: BattleState, enemy: UnitState) -> Dictionar
 	var player := state.get_unit(state.player_id)
 	var current := enemy.position
 	var last_direction := Vector2i.ZERO
+	var path: Array[Vector2i] = [current]
 
 	if _manhattan(current, player.position) > 1:
 		for step in range(enemy.move_range):
@@ -260,6 +262,7 @@ func _compute_reactive_intent(state: BattleState, enemy: UnitState) -> Dictionar
 			if best_direction == Vector2i.ZERO:
 				break
 			current += best_direction
+			path.append(current)
 			last_direction = best_direction
 			if _manhattan(current, player.position) <= 1:
 				break
@@ -270,6 +273,7 @@ func _compute_reactive_intent(state: BattleState, enemy: UnitState) -> Dictionar
 		"enemy_id": enemy.unit_id,
 		"from": enemy.position,
 		"to": current,
+		"path": path,
 		"last_direction": last_direction,
 		"target": player.position,
 		"damage": enemy.attack_damage,
@@ -308,6 +312,7 @@ func _execute_enemy_intents(state: BattleState, intents: Array, fixed_history: b
 				events.append(BattleEvent.create(&"unit_moved", enemy.unit_id, {
 					"from": move_origin,
 					"to": destination,
+					"path": intent.get("path", [move_origin, destination]),
 					"is_ghost": false,
 				}))
 			else:
@@ -506,6 +511,29 @@ func _build_unit_view_data(state: BattleState) -> Dictionary:
 				"active": unit.active,
 			}
 	return view_data
+
+
+func _build_ghost_preview(state: BattleState) -> Array:
+	var preview: Array = []
+	for timeline_data in state.timeline_recordings:
+		var record: Dictionary = timeline_data
+		var timeline_number := int(record.get("timeline_index", 0))
+		if state.turn_index > int(record.get("end_turn", 0)):
+			continue
+		var ghost_id := StringName("ghost_t%d" % timeline_number)
+		for action_data in record.get("actions", []):
+			var action := RecordedAction.from_dict(action_data)
+			if action.turn_index != state.turn_index:
+				continue
+			preview.append({
+				"ghost_id": ghost_id,
+				"source_timeline": timeline_number,
+				"action_type": action.action_type,
+				"origin": action.origin,
+				"target": action.target,
+				"path": action.result.get("path", [action.origin, action.target]),
+			})
+	return preview
 
 
 func _manhattan(a: Vector2i, b: Vector2i) -> int:

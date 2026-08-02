@@ -16,6 +16,10 @@ const COLOR_WALL_SIDE := Color("#35445c")
 const COLOR_MOVE := Color(0.20, 0.88, 0.64, 0.32)
 const COLOR_ATTACK := Color(1.0, 0.26, 0.31, 0.42)
 const COLOR_GHOST := Color("#ab78ff")
+const COLOR_GHOST_PATH := Color(0.67, 0.47, 1.0, 0.20)
+const COLOR_GHOST_FIRE := Color("#c69aff")
+const COLOR_ENEMY_MOVE := Color("#f2b86b")
+const COLOR_ENEMY_ATTACK := Color("#ff6670")
 const COLOR_PLAYER := Color("#54e6ff")
 const COLOR_ENEMY := Color("#ff5f68")
 
@@ -26,6 +30,10 @@ var _display_units: Dictionary = {}
 var _animated_positions: Dictionary = {}
 var _reachable: Array[Vector2i] = []
 var _attackable: Array[Vector2i] = []
+var _ghost_path_cells: Array[Vector2i] = []
+var _ghost_fire_cells: Array[Vector2i] = []
+var _enemy_move_cells: Array[Vector2i] = []
+var _enemy_attack_cells: Array[Vector2i] = []
 var _hovered_cell := Vector2i(-1, -1)
 var _pulse_cell := Vector2i(-1, -1)
 var _interaction_enabled := false
@@ -70,6 +78,11 @@ func play_event(event: BattleEvent, speed: float) -> void:
 	match event.event_type:
 		&"timeline_started":
 			_apply_timeline_reset(event.payload)
+		&"turn_started":
+			_apply_turn_preview(event.payload)
+			await _wait(0.48, speed)
+		&"phase_changed":
+			_apply_phase_change(event.payload.get("phase", &""))
 		&"unit_moved":
 			await _play_move(event, speed)
 		&"attack_performed":
@@ -137,10 +150,22 @@ func _draw_wall(cell: Vector2i) -> void:
 
 
 func _draw_overlays() -> void:
+	for cell in _ghost_path_cells:
+		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_GHOST_PATH)
+	for cell in _enemy_attack_cells:
+		draw_colored_polygon(_diamond(grid_to_local(cell)), Color(COLOR_ENEMY_ATTACK, 0.24))
+	for cell in _enemy_move_cells:
+		_draw_cell_outline(cell, COLOR_ENEMY_MOVE, 2.5)
+	for cell in _ghost_fire_cells:
+		_draw_cell_outline(cell, COLOR_GHOST_FIRE, 3.2)
 	for cell in _reachable:
 		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_MOVE)
 	for cell in _attackable:
 		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_ATTACK)
+	for cell in _ghost_fire_cells:
+		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "G!", 13, COLOR_GHOST_FIRE)
+	for cell in _enemy_attack_cells:
+		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "!", 16, COLOR_ENEMY_ATTACK)
 	if _is_in_bounds(_hovered_cell):
 		var hover_color := Color(1.0, 1.0, 1.0, 0.65) if _interaction_enabled else Color(0.7, 0.7, 0.7, 0.25)
 		draw_polyline(_closed_polygon(_diamond(grid_to_local(_hovered_cell))), hover_color, 2.5, true)
@@ -204,6 +229,7 @@ func _play_move(event: BattleEvent, speed: float) -> void:
 	var actor_id := event.actor_id
 	var origin: Vector2i = event.payload.get("from", Vector2i.ZERO)
 	var target: Vector2i = event.payload.get("to", origin)
+	var path := _normalized_path(event.payload.get("path", []), origin, target)
 	var is_ghost := bool(event.payload.get("is_ghost", false))
 	if not _display_units.has(actor_id):
 		_display_units[actor_id] = _ghost_entry(origin) if is_ghost else {
@@ -214,11 +240,21 @@ func _play_move(event: BattleEvent, speed: float) -> void:
 			"active": true,
 			"is_ghost": false,
 		}
-	var duration := _scaled_duration(0.22, speed)
-	if duration > 0.0:
-		var tween := create_tween()
-		tween.tween_method(_set_move_progress.bind(actor_id, grid_to_local(origin), grid_to_local(target)), 0.0, 1.0, duration)
-		await tween.finished
+	for step_index in range(1, path.size()):
+		var step_origin: Vector2i = path[step_index - 1]
+		var step_target: Vector2i = path[step_index]
+		var duration := _scaled_duration(0.16, speed)
+		if duration > 0.0:
+			var tween := create_tween()
+			tween.tween_method(_set_move_progress.bind(actor_id, grid_to_local(step_origin), grid_to_local(step_target)), 0.0, 1.0, duration)
+			await tween.finished
+		else:
+			_animated_positions[actor_id] = grid_to_local(step_target)
+			queue_redraw()
+			await get_tree().process_frame
+		var step_entry: Dictionary = _display_units[actor_id]
+		step_entry.position = step_target
+		_display_units[actor_id] = step_entry
 	var entry: Dictionary = _display_units[actor_id]
 	entry.position = target
 	_display_units[actor_id] = entry
@@ -260,6 +296,7 @@ func _play_death(event: BattleEvent, speed: float) -> void:
 func _apply_timeline_reset(payload: Dictionary) -> void:
 	_display_units.clear()
 	_animated_positions.clear()
+	_clear_all_previews()
 	var units: Dictionary = payload.get("units", {})
 	for unit_id in units.keys():
 		var entry: Dictionary = VariantCodec.deep_copy(units[unit_id])
@@ -269,6 +306,71 @@ func _apply_timeline_reset(payload: Dictionary) -> void:
 	for ghost_id in ghosts.keys():
 		_display_units[ghost_id] = _ghost_entry(ghosts[ghost_id])
 	queue_redraw()
+
+
+func _apply_turn_preview(payload: Dictionary) -> void:
+	_ghost_path_cells.clear()
+	_ghost_fire_cells.clear()
+	_enemy_move_cells.clear()
+	_enemy_attack_cells.clear()
+	for action_data in payload.get("ghost_actions", []):
+		var action: Dictionary = action_data
+		var action_type: StringName = action.get("action_type", &"")
+		if action_type == BattleCommand.MOVE:
+			for cell_variant in action.get("path", []):
+				_append_unique(_ghost_path_cells, cell_variant)
+		elif action_type == BattleCommand.ATTACK:
+			_append_unique(_ghost_fire_cells, action.get("target", Vector2i(-1, -1)))
+	if StringName(payload.get("time_state", &"unknown")) == &"known":
+		for intent_data in payload.get("enemy_intents", []):
+			var intent: Dictionary = intent_data
+			var intent_type: StringName = intent.get("intent_type", &"wait")
+			if intent_type == &"move" or intent_type == &"move_attack":
+				_append_unique(_enemy_move_cells, intent.get("to", Vector2i(-1, -1)))
+			if intent_type == &"attack" or intent_type == &"move_attack":
+				_append_unique(_enemy_attack_cells, intent.get("target", Vector2i(-1, -1)))
+	queue_redraw()
+
+
+func _apply_phase_change(phase: StringName) -> void:
+	if phase == BattlePhase.PLAYER_INPUT:
+		_ghost_path_cells.clear()
+		_ghost_fire_cells.clear()
+	elif phase == BattlePhase.ENEMY_EXECUTION:
+		_enemy_move_cells.clear()
+		_enemy_attack_cells.clear()
+	elif phase == BattlePhase.TIMELINE_TRANSITION or phase == BattlePhase.BATTLE_OVER:
+		_clear_all_previews()
+	queue_redraw()
+
+
+func _clear_all_previews() -> void:
+	_ghost_path_cells.clear()
+	_ghost_fire_cells.clear()
+	_enemy_move_cells.clear()
+	_enemy_attack_cells.clear()
+
+
+func _append_unique(cells: Array[Vector2i], cell: Vector2i) -> void:
+	if _is_in_bounds(cell) and not cells.has(cell):
+		cells.append(cell)
+
+
+func _normalized_path(raw_path: Variant, origin: Vector2i, target: Vector2i) -> Array[Vector2i]:
+	var path: Array[Vector2i] = []
+	if raw_path is Array:
+		for cell_variant in raw_path:
+			if cell_variant is Vector2i:
+				path.append(cell_variant)
+	if path.is_empty() or path[0] != origin:
+		path.push_front(origin)
+	if path[path.size() - 1] != target:
+		path.append(target)
+	return path
+
+
+func _draw_cell_outline(cell: Vector2i, color: Color, width: float) -> void:
+	draw_polyline(_closed_polygon(_diamond(grid_to_local(cell))), color, width, true)
 
 
 func _ghost_entry(position: Vector2i) -> Dictionary:

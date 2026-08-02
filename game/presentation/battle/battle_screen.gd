@@ -12,6 +12,8 @@ var _state_label: Label
 var _instruction_label: Label
 var _end_turn_button: Button
 var _next_timeline_button: Button
+var _timeline_overlay: Control
+var _timeline_summary_label: Label
 var _restart_button: Button
 var _speed_option: OptionButton
 var _log: RichTextLabel
@@ -74,12 +76,6 @@ func _build_interface() -> void:
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	sidebar.add_child(_end_turn_button)
 
-	_next_timeline_button = Button.new()
-	_next_timeline_button.text = "开始下一条时间线"
-	_next_timeline_button.custom_minimum_size.y = 44.0
-	_next_timeline_button.pressed.connect(_on_next_timeline_pressed)
-	sidebar.add_child(_next_timeline_button)
-
 	_restart_button = Button.new()
 	_restart_button.text = "重开战斗"
 	_restart_button.custom_minimum_size.y = 40.0
@@ -99,7 +95,7 @@ func _build_interface() -> void:
 	sidebar.add_child(speed_row)
 
 	var hint := Label.new()
-	hint.text = "绿色：可移动\n红色：可攻击\nP：本体　E：敌人　G：分身"
+	hint.text = "绿色：本体可移动\n红色实格：本体可攻击\n紫框 G!：分身火线\n红色 !：已知敌人攻击\n橙框：已知敌人移动终点\nP：本体　E：敌人　G：分身"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color("#7386a6"))
 	sidebar.add_child(hint)
@@ -138,6 +134,62 @@ func _build_interface() -> void:
 	_event_player = BattleEventPlayerScript.new()
 	_event_player.event_finished.connect(_on_event_finished)
 	add_child(_event_player)
+	_build_timeline_overlay()
+
+
+func _build_timeline_overlay() -> void:
+	_timeline_overlay = Control.new()
+	_timeline_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_timeline_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_timeline_overlay.visible = false
+	add_child(_timeline_overlay)
+
+	var scrim := ColorRect.new()
+	scrim.color = Color(0.02, 0.04, 0.09, 0.76)
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_timeline_overlay.add_child(scrim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_timeline_overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(430.0, 250.0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("#151d35")))
+	center.add_child(panel)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 16)
+	panel.add_child(content)
+
+	var title := Label.new()
+	title.text = "时间线已记录"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 27)
+	title.add_theme_color_override("font_color", Color("#c69aff"))
+	content.add_child(title)
+
+	_timeline_summary_label = Label.new()
+	_timeline_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timeline_summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_timeline_summary_label.add_theme_font_size_override("font_size", 17)
+	_timeline_summary_label.add_theme_color_override("font_color", Color("#cbd9ef"))
+	content.add_child(_timeline_summary_label)
+
+	var explanation := Label.new()
+	explanation.text = "这一条时间线的行动已经成为事实。\n下一次开始时，它会作为分身自动重演。"
+	explanation.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	explanation.add_theme_color_override("font_color", Color("#91a3c2"))
+	content.add_child(explanation)
+
+	_next_timeline_button = Button.new()
+	_next_timeline_button.text = "开始下一条时间线"
+	_next_timeline_button.custom_minimum_size.y = 48.0
+	_next_timeline_button.pressed.connect(_on_next_timeline_pressed)
+	content.add_child(_next_timeline_button)
 
 
 func _start_battle() -> void:
@@ -223,7 +275,7 @@ func get_state_snapshot_for_test() -> Dictionary:
 func get_ui_snapshot_for_test() -> Dictionary:
 	return {
 		"instruction": _instruction_label.text,
-		"next_timeline_visible": _next_timeline_button.visible,
+		"next_timeline_visible": _timeline_overlay.visible,
 		"end_turn_disabled": _end_turn_button.disabled,
 		"busy": _busy,
 	}
@@ -246,8 +298,9 @@ func _refresh_interface() -> void:
 
 	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
 	_end_turn_button.disabled = not player_input
-	_next_timeline_button.visible = state.phase == BattlePhase.TIMELINE_TRANSITION
+	_timeline_overlay.visible = state.phase == BattlePhase.TIMELINE_TRANSITION and not _busy
 	_next_timeline_button.disabled = _busy
+	_timeline_summary_label.text = "T%d 结束　·　剩余命数 %d" % [state.timeline_index, state.lives_left]
 	_restart_button.disabled = _busy
 
 	if state.phase == BattlePhase.TIMELINE_TRANSITION:
@@ -314,7 +367,7 @@ func _on_event_finished(event: BattleEvent) -> void:
 		&"unit_died":
 			_append_log("[color=#ff7780]%s 被击倒。[/color]" % event.actor_id)
 		&"timeline_ended":
-			_append_log("[color=#b993ff]T%d 已固化为分身。[/color]" % int(event.payload.get("timeline_index", 0)))
+			_append_log("[color=#b993ff]T%d 已记录为分身。[/color]" % int(event.payload.get("timeline_index", 0)))
 		&"timeline_started":
 			_append_log("[color=#b993ff]T%d 开始，旧时间线正在重演。[/color]" % int(event.payload.get("timeline_index", 0)))
 		&"battle_won":
