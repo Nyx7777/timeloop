@@ -48,6 +48,13 @@ static func end_turn(actor: StringName) -> BattleCommand:
 	return command
 
 
+static func crystallize(actor: StringName) -> BattleCommand:
+	var command := BattleCommand.new()
+	command.command_type = CRYSTALLIZE
+	command.actor_id = actor
+	return command
+
+
 static func start_next_timeline() -> BattleCommand:
 	var command := BattleCommand.new()
 	command.command_type = START_NEXT_TIMELINE

@@ -27,10 +27,13 @@ attack_damage = 2
 script = ExtResource("1_level")
 level_id = &"first_echo"
 display_name = "留下第一个自己"
+briefing = "守卫需要两次攻击才能击败。第一次失败会留下分身。"
+hint = "移动到敌人旁边攻击，让下一条时间线的分身重复这次攻击。"
 board_size = Vector2i(8, 8)
 lives = 2
 walls = Array[Vector2i]([Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6)])
 spawns = Array[Resource]([SubResource("Resource_player"), SubResource("Resource_guard")])
 rules = {
+"crystallize_enabled": false,
 "push_enabled": false
 }

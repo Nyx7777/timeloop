@@ -20,6 +20,7 @@ const COLOR_GHOST_PATH := Color(0.67, 0.47, 1.0, 0.20)
 const COLOR_GHOST_FIRE := Color("#c69aff")
 const COLOR_ENEMY_MOVE := Color("#f2b86b")
 const COLOR_ENEMY_ATTACK := Color("#ff6670")
+const COLOR_PUSH := Color("#ffd166")
 const COLOR_PLAYER := Color("#54e6ff")
 const COLOR_ENEMY := Color("#ff5f68")
 
@@ -34,6 +35,7 @@ var _ghost_path_cells: Array[Vector2i] = []
 var _ghost_fire_cells: Array[Vector2i] = []
 var _enemy_move_cells: Array[Vector2i] = []
 var _enemy_attack_cells: Array[Vector2i] = []
+var _push_previews: Array = []
 var _hovered_cell := Vector2i(-1, -1)
 var _pulse_cell := Vector2i(-1, -1)
 var _interaction_enabled := false
@@ -51,6 +53,9 @@ func sync_from_state(state: BattleState) -> void:
 	_holes.assign(state.holes)
 	_display_units.clear()
 	_animated_positions.clear()
+	_clear_all_previews()
+	_pulse_cell = Vector2i(-1, -1)
+	_hovered_cell = Vector2i(-1, -1)
 	for unit_id in state.unit_order:
 		var unit := state.get_unit(unit_id)
 		if unit != null:
@@ -61,15 +66,27 @@ func sync_from_state(state: BattleState) -> void:
 				"team": unit.team,
 				"active": unit.active,
 				"is_ghost": false,
+				"disturbed": bool(unit.statuses.get("disturbed", false)),
 			}
 	for ghost_id in state.ghost_positions.keys():
 		_display_units[ghost_id] = _ghost_entry(state.ghost_positions[ghost_id])
 	queue_redraw()
 
 
-func set_interaction(reachable: Array[Vector2i], attackable: Array[Vector2i], enabled: bool) -> void:
+func get_preview_snapshot_for_test() -> Dictionary:
+	return {
+		"ghost_path_count": _ghost_path_cells.size(),
+		"ghost_fire_count": _ghost_fire_cells.size(),
+		"enemy_move_count": _enemy_move_cells.size(),
+		"enemy_attack_count": _enemy_attack_cells.size(),
+		"push_preview_count": _push_previews.size(),
+	}
+
+
+func set_interaction(reachable: Array[Vector2i], attackable: Array[Vector2i], enabled: bool, push_previews: Array = []) -> void:
 	_reachable.assign(reachable)
 	_attackable.assign(attackable)
+	_push_previews = VariantCodec.deep_copy(push_previews)
 	_interaction_enabled = enabled
 	queue_redraw()
 
@@ -85,6 +102,13 @@ func play_event(event: BattleEvent, speed: float) -> void:
 			_apply_phase_change(event.payload.get("phase", &""))
 		&"unit_moved":
 			await _play_move(event, speed)
+		&"unit_pushed":
+			await _play_move(event, speed)
+		&"push_blocked":
+			await _play_cell_pulse(event.payload.get("cell", Vector2i(-1, -1)), 0.12, speed)
+		&"enemy_disturbed":
+			_apply_disturbed(event.actor_id)
+			await _wait(0.08, speed)
 		&"attack_performed":
 			await _play_cell_pulse(event.payload.get("target_cell", Vector2i(-1, -1)), 0.16, speed)
 		&"damage_applied":
@@ -162,6 +186,16 @@ func _draw_overlays() -> void:
 		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_MOVE)
 	for cell in _attackable:
 		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_ATTACK)
+	for preview_data in _push_previews:
+		var preview: Dictionary = preview_data
+		var cell: Vector2i = preview.get("display_cell", Vector2i(-1, -1))
+		if not _is_in_bounds(cell):
+			continue
+		var outcome: StringName = preview.get("outcome", &"moved")
+		var color := Color("#8b98aa") if outcome == &"blocked" else (Color("#c69aff") if outcome == &"time_hole" else COLOR_PUSH)
+		var marker := "×" if outcome == &"blocked" else ("↓" if outcome == &"time_hole" else "→")
+		_draw_cell_outline(cell, color, 2.8)
+		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), marker, 17, color)
 	for cell in _ghost_fire_cells:
 		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "G!", 13, COLOR_GHOST_FIRE)
 	for cell in _enemy_attack_cells:
@@ -190,6 +224,9 @@ func _draw_units() -> void:
 		draw_circle(screen_position - Vector2(0.0, 8.0), 18.0, color.lightened(0.25), false, 2.0, true)
 		var marker := "G" if is_ghost else ("P" if team == &"player" else "E")
 		_draw_centered_text(screen_position - Vector2(0.0, 2.0), marker, 16, Color("#101828"))
+		if bool(entry.get("disturbed", false)):
+			draw_circle(screen_position - Vector2(0.0, 8.0), 23.0, Color("#ff8fc7"), false, 3.0, true)
+			_draw_centered_text(screen_position + Vector2(18.0, -19.0), "~", 16, Color("#ff8fc7"))
 		if not is_ghost:
 			_draw_hp_bar(screen_position + Vector2(-22.0, 18.0), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
 
@@ -239,6 +276,7 @@ func _play_move(event: BattleEvent, speed: float) -> void:
 			"team": &"enemy",
 			"active": true,
 			"is_ghost": false,
+			"disturbed": false,
 		}
 	for step_index in range(1, path.size()):
 		var step_origin: Vector2i = path[step_index - 1]
@@ -284,6 +322,15 @@ func _apply_damage_event(payload: Dictionary) -> void:
 	_display_units[target_id] = entry
 
 
+func _apply_disturbed(enemy_id: StringName) -> void:
+	if not _display_units.has(enemy_id):
+		return
+	var entry: Dictionary = _display_units[enemy_id]
+	entry.disturbed = true
+	_display_units[enemy_id] = entry
+	queue_redraw()
+
+
 func _play_death(event: BattleEvent, speed: float) -> void:
 	var cell: Vector2i = event.payload.get("cell", Vector2i(-1, -1))
 	await _play_cell_pulse(cell, 0.18, speed)
@@ -324,6 +371,8 @@ func _apply_turn_preview(payload: Dictionary) -> void:
 	if StringName(payload.get("time_state", &"unknown")) == &"known":
 		for intent_data in payload.get("enemy_intents", []):
 			var intent: Dictionary = intent_data
+			if bool(intent.get("reactive", false)):
+				continue
 			var intent_type: StringName = intent.get("intent_type", &"wait")
 			if intent_type == &"move" or intent_type == &"move_attack":
 				_append_unique(_enemy_move_cells, intent.get("to", Vector2i(-1, -1)))
@@ -349,6 +398,7 @@ func _clear_all_previews() -> void:
 	_ghost_fire_cells.clear()
 	_enemy_move_cells.clear()
 	_enemy_attack_cells.clear()
+	_push_previews.clear()
 
 
 func _append_unique(cells: Array[Vector2i], cell: Vector2i) -> void:
@@ -381,6 +431,7 @@ func _ghost_entry(position: Vector2i) -> Dictionary:
 		"team": &"ghost",
 		"active": true,
 		"is_ghost": true,
+		"disturbed": false,
 	}
 
 

@@ -8,6 +8,7 @@ var level_id: StringName
 var board_size := Vector2i(8, 8)
 var walls: Array[Vector2i] = []
 var holes: Array[Vector2i] = []
+var rules: Dictionary = {}
 var player_start := Vector2i.ZERO
 var timeline_index := 1
 var lives_left := 1
@@ -54,6 +55,7 @@ func to_dict() -> Dictionary:
 		"board_size": VariantCodec.encode(board_size),
 		"walls": VariantCodec.encode(walls),
 		"holes": VariantCodec.encode(holes),
+		"rules": VariantCodec.encode(rules),
 		"player_start": VariantCodec.encode(player_start),
 		"timeline_index": timeline_index,
 		"lives_left": lives_left,
@@ -88,6 +90,7 @@ static func from_dict(data: Dictionary) -> BattleState:
 	state.board_size = VariantCodec.decode(data.get("board_size", {}))
 	state.walls.assign(VariantCodec.decode(data.get("walls", VariantCodec.encode([]))))
 	state.holes.assign(VariantCodec.decode(data.get("holes", VariantCodec.encode([]))))
+	state.rules = VariantCodec.decode(data.get("rules", VariantCodec.encode({})))
 	state.player_start = VariantCodec.decode(data.get("player_start", VariantCodec.encode(Vector2i.ZERO)))
 	state.timeline_index = int(data.get("timeline_index", 1))
 	state.lives_left = int(data.get("lives_left", 1))

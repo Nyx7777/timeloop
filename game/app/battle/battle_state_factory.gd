@@ -14,6 +14,7 @@ static func create_from_level(level: LevelDefinition, seed: int = 1) -> BattleSt
 	state.board_size = level.board_size
 	state.walls.assign(level.walls)
 	state.holes.assign(level.holes)
+	state.rules = VariantCodec.deep_copy(level.rules)
 	state.lives_left = level.lives
 	state.rng_seed = seed
 	var random := RandomNumberGenerator.new()

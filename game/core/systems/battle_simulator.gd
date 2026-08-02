@@ -2,6 +2,7 @@ class_name BattleSimulator
 extends RefCounted
 
 const ENEMY_DIRECTIONS := [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
+const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
 
 
 func apply_command(state: BattleState, command: BattleCommand) -> CommandResult:
@@ -12,6 +13,8 @@ func apply_command(state: BattleState, command: BattleCommand) -> CommandResult:
 			return _apply_attack(state, command)
 		BattleCommand.END_TURN:
 			return _apply_end_turn(state, command)
+		BattleCommand.CRYSTALLIZE:
+			return _apply_crystallize(state, command)
 		BattleCommand.START_NEXT_TIMELINE:
 			return _apply_start_next_timeline(state)
 		_:
@@ -67,9 +70,11 @@ func _apply_attack(state: BattleState, command: BattleCommand) -> CommandResult:
 
 	attacker.has_acted = true
 	var action := _new_recorded_action(state, attacker.unit_id, BattleCommand.ATTACK, attacker.position, command.target_cell)
+	var push_direction := command.target_cell - attacker.position
 	action.result = {
 		"hit": true,
 		"damage": attacker.attack_damage,
+		"push_direction": push_direction,
 	}
 	state.current_recording.append(action)
 
@@ -79,6 +84,8 @@ func _apply_attack(state: BattleState, command: BattleCommand) -> CommandResult:
 		"is_ghost": false,
 	}))
 	_apply_damage(state, target, attacker.attack_damage, attacker.unit_id, events)
+	if target.active and _is_push_enabled(state):
+		action.result["push_result"] = _apply_knockback(state, target, push_direction, attacker.unit_id, events)
 
 	var won := _all_enemies_defeated(state)
 	if won:
@@ -97,21 +104,21 @@ func _apply_end_turn(state: BattleState, command: BattleCommand) -> CommandResul
 	events.append(_phase_event(state.phase))
 
 	var intents: Array = []
-	var fixed_history := state.enemy_history.has(state.turn_index)
-	if fixed_history:
-		intents = VariantCodec.deep_copy(state.enemy_history[state.turn_index])
-		state.time_state = &"known"
+	var has_history := state.enemy_history.has(state.turn_index)
+	if has_history:
+		intents = _resolve_known_time_intents(state)
+		state.time_state = &"disturbed" if _has_reactive_intent(intents) else &"known"
 	else:
 		intents = _compute_reactive_intents(state)
-		state.current_enemy_history[state.turn_index] = VariantCodec.deep_copy(intents)
 		state.time_state = &"unknown"
+	state.current_enemy_history[state.turn_index] = VariantCodec.deep_copy(intents)
 	state.locked_enemy_intents = VariantCodec.deep_copy(intents)
 	events.append(BattleEvent.create(&"enemy_intents_locked", &"", {
 		"time_state": state.time_state,
 		"intents": intents,
 	}))
 
-	_execute_enemy_intents(state, intents, fixed_history, events)
+	_execute_enemy_intents(state, intents, has_history, events)
 	if state.phase == BattlePhase.TIMELINE_TRANSITION:
 		return CommandResult.accept(events)
 	if state.phase == BattlePhase.BATTLE_OVER:
@@ -120,6 +127,33 @@ func _apply_end_turn(state: BattleState, command: BattleCommand) -> CommandResul
 	state.turn_index += 1
 	_begin_turn(state, events)
 	return CommandResult.accept(events)
+
+
+func _apply_crystallize(state: BattleState, command: BattleCommand) -> CommandResult:
+	var common_rejection := _validate_player_command(state, command)
+	if not common_rejection.is_empty():
+		return CommandResult.reject(common_rejection)
+	if not bool(state.rules.get("crystallize_enabled", false)):
+		return CommandResult.reject(&"crystallize_not_unlocked")
+	if state.lives_left <= 1:
+		return CommandResult.reject(&"last_life_cannot_crystallize")
+
+	state.lives_left -= 1
+	_commit_current_timeline(state, &"crystallized")
+	state.phase = BattlePhase.TIMELINE_TRANSITION
+	var events: Array[BattleEvent] = [
+		BattleEvent.create(&"timeline_crystallized", state.player_id, {
+			"timeline_index": state.timeline_index,
+			"lives_left": state.lives_left,
+		}),
+		BattleEvent.create(&"timeline_ended", state.player_id, {
+			"end_reason": &"crystallized",
+			"cause": &"player_choice",
+			"timeline_index": state.timeline_index,
+			"lives_left": state.lives_left,
+		}),
+	]
+	return CommandResult.accept(events, [], true)
 
 
 func _apply_start_next_timeline(state: BattleState) -> CommandResult:
@@ -156,8 +190,8 @@ func _begin_turn(state: BattleState, events: Array[BattleEvent]) -> void:
 
 	_update_active_ghosts(state)
 	if state.enemy_history.has(state.turn_index):
-		state.time_state = &"known"
-		state.locked_enemy_intents = VariantCodec.deep_copy(state.enemy_history[state.turn_index])
+		state.locked_enemy_intents = _build_known_time_preview(state)
+		state.time_state = &"disturbed" if _has_reactive_intent(state.locked_enemy_intents) else &"known"
 	else:
 		state.time_state = &"unknown"
 		state.locked_enemy_intents.clear()
@@ -225,6 +259,9 @@ func _execute_ghost_attack(state: BattleState, ghost_id: StringName, timeline_nu
 
 	var damage := int(action.result.get("damage", 0))
 	_apply_damage(state, target, damage, ghost_id, events)
+	if target.active and _is_push_enabled(state):
+		var push_direction: Vector2i = action.result.get("push_direction", action.target - action.origin)
+		_apply_knockback(state, target, push_direction, ghost_id, events)
 	if target.team == &"enemy" and _all_enemies_defeated(state):
 		_mark_victory(state, events)
 	elif target.unit_id == state.player_id and not target.active:
@@ -239,6 +276,54 @@ func _compute_reactive_intents(state: BattleState) -> Array:
 			continue
 		intents.append(_compute_reactive_intent(state, enemy))
 	return intents
+
+
+func _build_known_time_preview(state: BattleState) -> Array:
+	var previews: Array = VariantCodec.deep_copy(state.enemy_history.get(state.turn_index, []))
+	for preview_data in previews:
+		var preview: Dictionary = preview_data
+		var enemy := state.get_unit(StringName(preview.get("enemy_id", &"")))
+		preview["reactive"] = enemy != null and _is_enemy_awake(enemy, state.turn_index)
+	return previews
+
+
+func _resolve_known_time_intents(state: BattleState) -> Array:
+	var history: Array = state.enemy_history.get(state.turn_index, [])
+	var intents: Array = []
+	for unit_id in state.unit_order:
+		var enemy := state.get_unit(unit_id)
+		if enemy == null or not enemy.active or enemy.team != &"enemy":
+			continue
+		if _is_enemy_awake(enemy, state.turn_index):
+			var reactive := _compute_reactive_intent(state, enemy)
+			reactive["reactive"] = true
+			intents.append(reactive)
+			continue
+		var historical := _find_intent_for_enemy(history, enemy.unit_id)
+		if not historical.is_empty():
+			historical["reactive"] = false
+			intents.append(historical)
+	return intents
+
+
+func _find_intent_for_enemy(intents: Array, enemy_id: StringName) -> Dictionary:
+	for intent_data in intents:
+		var intent: Dictionary = intent_data
+		if StringName(intent.get("enemy_id", &"")) == enemy_id:
+			return VariantCodec.deep_copy(intent)
+	return {}
+
+
+func _has_reactive_intent(intents: Array) -> bool:
+	for intent_data in intents:
+		if bool((intent_data as Dictionary).get("reactive", false)):
+			return true
+	return false
+
+
+func _is_enemy_awake(enemy: UnitState, turn_index: int) -> bool:
+	var awake_from := int(enemy.statuses.get("awake_from_turn", 0))
+	return awake_from > 0 and turn_index >= awake_from
 
 
 func _compute_reactive_intent(state: BattleState, enemy: UnitState) -> Dictionary:
@@ -295,8 +380,9 @@ func _execute_enemy_intents(state: BattleState, intents: Array, fixed_history: b
 		var enemy := state.get_unit(enemy_id)
 		if enemy == null or not enemy.active:
 			continue
+		var fixed_intent := fixed_history and not bool(intent.get("reactive", false))
 		var origin: Vector2i = intent.get("from", enemy.position)
-		if fixed_history and enemy.position != origin:
+		if fixed_intent and enemy.position != origin:
 			events.append(BattleEvent.create(&"action_invalidated", enemy.unit_id, {
 				"action_type": intent.get("intent_type", &"wait"),
 				"reason": &"history_origin_changed",
@@ -306,8 +392,12 @@ func _execute_enemy_intents(state: BattleState, intents: Array, fixed_history: b
 		var intent_type: StringName = intent.get("intent_type", &"wait")
 		if intent_type == &"move" or intent_type == &"move_attack":
 			var destination: Vector2i = intent.get("to", enemy.position)
-			if _is_enemy_destination_open(state, enemy.unit_id, destination):
+			var can_move := _is_enemy_step_valid(state, enemy.unit_id, destination) if fixed_intent else _is_enemy_destination_open(state, enemy.unit_id, destination)
+			if can_move:
 				var move_origin := enemy.position
+				var player := state.get_unit(state.player_id)
+				if fixed_intent and player != null and player.active and player.position == destination:
+					_apply_history_collision(state, player, intent, enemy.unit_id, events)
 				enemy.position = destination
 				events.append(BattleEvent.create(&"unit_moved", enemy.unit_id, {
 					"from": move_origin,
@@ -315,6 +405,9 @@ func _execute_enemy_intents(state: BattleState, intents: Array, fixed_history: b
 					"path": intent.get("path", [move_origin, destination]),
 					"is_ghost": false,
 				}))
+				if player != null and not player.active:
+					_handle_player_death(state, &"history_collision", events)
+					return
 			else:
 				events.append(BattleEvent.create(&"action_invalidated", enemy.unit_id, {
 					"action_type": &"move",
@@ -434,6 +527,115 @@ func _new_recorded_action(state: BattleState, actor_id: StringName, action_type:
 	return action
 
 
+func _apply_knockback(state: BattleState, target: UnitState, direction: Vector2i, source_id: StringName, events: Array[BattleEvent]) -> Dictionary:
+	var result: Dictionary = DisplacementQueryScript.evaluate_knockback(state, target, direction)
+	var origin: Vector2i = result.from
+	var destination: Vector2i = result.to
+	if result.outcome == &"time_hole":
+		target.position = destination
+		events.append(BattleEvent.create(&"unit_pushed", target.unit_id, {
+			"from": origin,
+			"to": destination,
+			"path": [origin, destination],
+			"source_id": source_id,
+			"outcome": &"time_hole",
+		}))
+		_kill_unit(target, source_id, &"time_hole", events)
+		return result
+
+	if result.outcome == &"blocked":
+		events.append(BattleEvent.create(&"push_blocked", target.unit_id, {
+			"cell": origin,
+			"attempted_cell": destination,
+			"source_id": source_id,
+			"reason": result.blocked_reason,
+		}))
+		return result
+
+	target.position = destination
+	events.append(BattleEvent.create(&"unit_pushed", target.unit_id, {
+		"from": origin,
+		"to": destination,
+		"path": [origin, destination],
+		"source_id": source_id,
+		"outcome": &"moved",
+	}))
+	if target.team == &"enemy":
+		_mark_enemy_disturbed(state, target, events)
+	return result
+
+
+func _mark_enemy_disturbed(state: BattleState, enemy: UnitState, events: Array[BattleEvent]) -> void:
+	if state.timeline_index <= 1 or not state.enemy_history.has(state.turn_index):
+		return
+	var wake_turn := state.turn_index + 1
+	var existing := int(enemy.statuses.get("awake_from_turn", 0))
+	if existing > 0:
+		wake_turn = mini(wake_turn, existing)
+	enemy.statuses["awake_from_turn"] = wake_turn
+	enemy.statuses["disturbed"] = true
+	events.append(BattleEvent.create(&"enemy_disturbed", enemy.unit_id, {
+		"wake_turn": wake_turn,
+	}))
+
+
+func _apply_history_collision(state: BattleState, player: UnitState, intent: Dictionary, enemy_id: StringName, events: Array[BattleEvent]) -> void:
+	var direction: Vector2i = intent.get("last_direction", Vector2i.ZERO)
+	if direction == Vector2i.ZERO:
+		direction = _cardinal_direction(intent.get("from", Vector2i.ZERO), intent.get("to", Vector2i.ZERO))
+	var origin := player.position
+	var destination := origin + direction
+	if state.holes.has(destination):
+		player.position = destination
+		events.append(BattleEvent.create(&"unit_pushed", player.unit_id, {
+			"from": origin,
+			"to": destination,
+			"path": [origin, destination],
+			"source_id": enemy_id,
+			"outcome": &"time_hole",
+			"collision": true,
+		}))
+		_kill_unit(player, enemy_id, &"time_hole", events)
+		return
+
+	if not GridQuery.is_in_bounds(state, destination) or state.walls.has(destination) or _find_active_unit_at(state, destination) != null:
+		_kill_unit(player, enemy_id, &"time_compression", events)
+		return
+
+	player.position = destination
+	events.append(BattleEvent.create(&"unit_pushed", player.unit_id, {
+		"from": origin,
+		"to": destination,
+		"path": [origin, destination],
+		"source_id": enemy_id,
+		"outcome": &"moved",
+		"collision": true,
+	}))
+
+
+func _kill_unit(target: UnitState, source_id: StringName, cause: StringName, events: Array[BattleEvent]) -> void:
+	target.hp = 0
+	target.active = false
+	events.append(BattleEvent.create(&"unit_died", target.unit_id, {
+		"source_id": source_id,
+		"cell": target.position,
+		"cause": cause,
+	}))
+
+
+func _cardinal_direction(origin: Vector2i, target: Vector2i) -> Vector2i:
+	var delta := target - origin
+	if absi(delta.x) >= absi(delta.y) and delta.x != 0:
+		return Vector2i(signi(delta.x), 0)
+	if delta.y != 0:
+		return Vector2i(0, signi(delta.y))
+	return Vector2i.ZERO
+
+
+func _is_push_enabled(state: BattleState) -> bool:
+	return bool(state.rules.get("push_enabled", false))
+
+
 func _apply_damage(state: BattleState, target: UnitState, damage: int, source_id: StringName, events: Array[BattleEvent]) -> void:
 	target.hp = maxi(0, target.hp - damage)
 	events.append(BattleEvent.create(&"damage_applied", source_id, {
@@ -509,6 +711,7 @@ func _build_unit_view_data(state: BattleState) -> Dictionary:
 				"max_hp": unit.max_hp,
 				"team": unit.team,
 				"active": unit.active,
+				"disturbed": bool(unit.statuses.get("disturbed", false)),
 			}
 	return view_data
 

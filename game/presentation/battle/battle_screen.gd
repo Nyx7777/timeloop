@@ -3,17 +3,26 @@ extends Control
 
 const BattleBoardViewScript := preload("res://presentation/battle/battle_board_view.gd")
 const BattleEventPlayerScript := preload("res://presentation/battle/battle_event_player.gd")
+const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
+const LEVELS := [
+	{"label": "1 · 留下第一个自己", "path": "res://content/levels/first_echo.tres", "number": 1},
+	{"label": "5 · 历史冲撞", "path": "res://content/levels/collision_course.tres", "number": 5},
+]
 
 var _session: BattleSession
 var _board: Control
 var _event_player: Node
 var _mission_label: Label
+var _level_option: OptionButton
 var _state_label: Label
 var _instruction_label: Label
 var _end_turn_button: Button
+var _crystallize_button: Button
 var _next_timeline_button: Button
 var _timeline_overlay: Control
+var _timeline_title_label: Label
 var _timeline_summary_label: Label
+var _timeline_explanation_label: Label
 var _restart_button: Button
 var _speed_option: OptionButton
 var _log: RichTextLabel
@@ -45,15 +54,29 @@ func _build_interface() -> void:
 	left_panel.add_theme_stylebox_override("panel", _panel_style(Color("#111b2e")))
 	add_child(left_panel)
 
+	var sidebar_scroll := ScrollContainer.new()
+	sidebar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sidebar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	sidebar_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_panel.add_child(sidebar_scroll)
+
 	var sidebar := VBoxContainer.new()
-	sidebar.add_theme_constant_override("separation", 12)
-	left_panel.add_child(sidebar)
+	sidebar.add_theme_constant_override("separation", 9)
+	sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sidebar_scroll.add_child(sidebar)
 
 	var title := Label.new()
 	title.text = "TIMELOOP · 战斗纵切"
 	title.add_theme_font_size_override("font_size", 23)
 	title.add_theme_color_override("font_color", Color("#9eeeff"))
 	sidebar.add_child(title)
+
+	_level_option = OptionButton.new()
+	for level_data in LEVELS:
+		_level_option.add_item(level_data.label)
+	_level_option.select(1)
+	_level_option.item_selected.connect(_on_level_selected)
+	sidebar.add_child(_level_option)
 
 	_mission_label = Label.new()
 	_mission_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -76,6 +99,12 @@ func _build_interface() -> void:
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	sidebar.add_child(_end_turn_button)
 
+	_crystallize_button = Button.new()
+	_crystallize_button.text = "固化当前时间线"
+	_crystallize_button.custom_minimum_size.y = 40.0
+	_crystallize_button.pressed.connect(_on_crystallize_pressed)
+	sidebar.add_child(_crystallize_button)
+
 	_restart_button = Button.new()
 	_restart_button.text = "重开战斗"
 	_restart_button.custom_minimum_size.y = 40.0
@@ -95,8 +124,9 @@ func _build_interface() -> void:
 	sidebar.add_child(speed_row)
 
 	var hint := Label.new()
-	hint.text = "绿色：本体可移动\n红色实格：本体可攻击\n紫框 G!：分身火线\n红色 !：已知敌人攻击\n橙框：已知敌人移动终点\nP：本体　E：敌人　G：分身"
+	hint.text = "绿色移动 · 红格攻击\n黄→击退 · 紫↓坠洞\n紫 G! 分身火线 · 红 ! 敌攻\n橙框敌移 · 洋红环扰动\nP 本体　E 敌人　G 分身"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color("#7386a6"))
 	sidebar.add_child(hint)
 
@@ -164,12 +194,12 @@ func _build_timeline_overlay() -> void:
 	content.add_theme_constant_override("separation", 16)
 	panel.add_child(content)
 
-	var title := Label.new()
-	title.text = "时间线已记录"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 27)
-	title.add_theme_color_override("font_color", Color("#c69aff"))
-	content.add_child(title)
+	_timeline_title_label = Label.new()
+	_timeline_title_label.text = "时间线已记录"
+	_timeline_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timeline_title_label.add_theme_font_size_override("font_size", 27)
+	_timeline_title_label.add_theme_color_override("font_color", Color("#c69aff"))
+	content.add_child(_timeline_title_label)
 
 	_timeline_summary_label = Label.new()
 	_timeline_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -178,12 +208,12 @@ func _build_timeline_overlay() -> void:
 	_timeline_summary_label.add_theme_color_override("font_color", Color("#cbd9ef"))
 	content.add_child(_timeline_summary_label)
 
-	var explanation := Label.new()
-	explanation.text = "这一条时间线的行动已经成为事实。\n下一次开始时，它会作为分身自动重演。"
-	explanation.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	explanation.add_theme_color_override("font_color", Color("#91a3c2"))
-	content.add_child(explanation)
+	_timeline_explanation_label = Label.new()
+	_timeline_explanation_label.text = "这一条时间线的行动已经成为事实。\n下一次开始时，它会作为分身自动重演。"
+	_timeline_explanation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timeline_explanation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_timeline_explanation_label.add_theme_color_override("font_color", Color("#91a3c2"))
+	content.add_child(_timeline_explanation_label)
 
 	_next_timeline_button = Button.new()
 	_next_timeline_button.text = "开始下一条时间线"
@@ -193,14 +223,21 @@ func _build_timeline_overlay() -> void:
 
 
 func _start_battle() -> void:
-	var level := load("res://content/levels/first_echo.tres") as LevelDefinition
+	var selected_index := _level_option.selected
+	var level_data: Dictionary = LEVELS[selected_index]
+	var level := load(level_data.path) as LevelDefinition
 	var state := BattleStateFactory.create_from_level(level, 20260802)
 	_session = BattleSession.new(state)
 	_board.sync_from_state(_session.state)
-	_mission_label.text = "1. 留下第一个自己\n守卫需要两次攻击才能击败。第一次失败会留下分身。"
+	_mission_label.text = "%d. %s\n%s\n%s" % [level_data.number, level.display_name, level.briefing, level.hint]
 	_log.clear()
-	_append_log("[color=#9eeeff]战斗开始。移动到敌人旁边并攻击。[/color]")
+	_append_log("[color=#9eeeff]%s开始。移动到敌人旁边并攻击。[/color]" % level.display_name)
 	_refresh_interface()
+
+
+func _on_level_selected(_index: int) -> void:
+	if not _busy:
+		_start_battle()
 
 
 func _on_board_cell_clicked(cell: Vector2i) -> void:
@@ -221,6 +258,11 @@ func _on_board_cell_clicked(cell: Vector2i) -> void:
 func _on_end_turn_pressed() -> void:
 	if not _busy:
 		_submit(BattleCommand.end_turn(_session.state.player_id))
+
+
+func _on_crystallize_pressed() -> void:
+	if not _busy:
+		_submit(BattleCommand.crystallize(_session.state.player_id))
 
 
 func _on_next_timeline_pressed() -> void:
@@ -268,8 +310,17 @@ func submit_command_for_test(command: BattleCommand) -> void:
 	await _submit(command)
 
 
+func select_level_for_test(index: int) -> void:
+	_level_option.select(index)
+	_start_battle()
+
+
 func get_state_snapshot_for_test() -> Dictionary:
 	return _session.state.to_dict()
+
+
+func get_board_preview_snapshot_for_test() -> Dictionary:
+	return _board.get_preview_snapshot_for_test()
 
 
 func get_ui_snapshot_for_test() -> Dictionary:
@@ -277,6 +328,8 @@ func get_ui_snapshot_for_test() -> Dictionary:
 		"instruction": _instruction_label.text,
 		"next_timeline_visible": _timeline_overlay.visible,
 		"end_turn_disabled": _end_turn_button.disabled,
+		"crystallize_visible": _crystallize_button.visible,
+		"crystallize_disabled": _crystallize_button.disabled,
 		"busy": _busy,
 	}
 
@@ -298,10 +351,18 @@ func _refresh_interface() -> void:
 
 	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
 	_end_turn_button.disabled = not player_input
+	_crystallize_button.visible = bool(state.rules.get("crystallize_enabled", false))
+	_crystallize_button.disabled = not player_input or state.lives_left <= 1
 	_timeline_overlay.visible = state.phase == BattlePhase.TIMELINE_TRANSITION and not _busy
 	_next_timeline_button.disabled = _busy
 	_timeline_summary_label.text = "T%d 结束　·　剩余命数 %d" % [state.timeline_index, state.lives_left]
+	var last_end_reason: StringName = &""
+	if not state.timeline_recordings.is_empty():
+		last_end_reason = state.timeline_recordings[state.timeline_recordings.size() - 1].get("end_reason", &"")
+	_timeline_title_label.text = "固化完成" if last_end_reason == &"crystallized" else "时间线已记录"
+	_timeline_explanation_label.text = "当前行动已主动写入录像。\n下一次开始时，它会作为分身自动重演。" if last_end_reason == &"crystallized" else "这一条时间线的行动已经成为事实。\n下一次开始时，它会作为分身自动重演。"
 	_restart_button.disabled = _busy
+	_level_option.disabled = _busy
 
 	if state.phase == BattlePhase.TIMELINE_TRANSITION:
 		_instruction_label.text = "当前时间线已经结束。过去的行动已成为分身。"
@@ -316,12 +377,14 @@ func _refresh_interface() -> void:
 
 	var reachable: Array[Vector2i] = []
 	var attackable: Array[Vector2i] = []
+	var push_previews: Array = []
 	if player_input and player != null:
 		if not player.has_moved:
 			reachable = _get_reachable_cells()
 		if not player.has_acted:
 			attackable = _get_attackable_cells(player)
-	_board.set_interaction(reachable, attackable, player_input)
+			push_previews = _get_push_previews(player, attackable)
+	_board.set_interaction(reachable, attackable, player_input, push_previews)
 
 
 func _get_reachable_cells() -> Array[Vector2i]:
@@ -347,6 +410,21 @@ func _get_attackable_cells(player: UnitState) -> Array[Vector2i]:
 	return cells
 
 
+func _get_push_previews(player: UnitState, attackable: Array[Vector2i]) -> Array:
+	var previews: Array = []
+	if not bool(_session.state.rules.get("push_enabled", false)):
+		return previews
+	for target_cell in attackable:
+		var target := _find_enemy_at(target_cell)
+		if target == null or target.hp <= player.attack_damage:
+			continue
+		var preview: Dictionary = DisplacementQueryScript.evaluate_knockback(_session.state, target, target_cell - player.position)
+		preview["target_cell"] = target_cell
+		preview["display_cell"] = preview.to if GridQuery.is_in_bounds(_session.state, preview.to) else target_cell
+		previews.append(preview)
+	return previews
+
+
 func _find_enemy_at(cell: Vector2i) -> UnitState:
 	for unit_id in _session.state.unit_order:
 		var unit := _session.state.get_unit(unit_id)
@@ -360,6 +438,16 @@ func _on_event_finished(event: BattleEvent) -> void:
 		&"unit_moved":
 			var label := "分身" if bool(event.payload.get("is_ghost", false)) else String(event.actor_id)
 			_append_log("%s 移动到 %s" % [label, event.payload.get("to", Vector2i.ZERO)])
+		&"unit_pushed":
+			var outcome: StringName = event.payload.get("outcome", &"moved")
+			if outcome == &"time_hole":
+				_append_log("[color=#ff7780]%s 被推入时间空洞。[/color]" % event.actor_id)
+			else:
+				_append_log("[color=#f2b86b]%s 被推到 %s。[/color]" % [event.actor_id, event.payload.get("to", Vector2i.ZERO)])
+		&"push_blocked":
+			_append_log("%s 的击退被阻挡。" % event.actor_id)
+		&"enemy_disturbed":
+			_append_log("[color=#ff8fc7]%s 发生扰动，将从回合 %d 开始清醒。[/color]" % [event.actor_id, int(event.payload.get("wake_turn", 0))])
 		&"attack_performed":
 			_append_log("%s 攻击 %s" % [event.actor_id, event.payload.get("target_cell", Vector2i.ZERO)])
 		&"damage_applied":
@@ -367,7 +455,9 @@ func _on_event_finished(event: BattleEvent) -> void:
 		&"unit_died":
 			_append_log("[color=#ff7780]%s 被击倒。[/color]" % event.actor_id)
 		&"timeline_ended":
-			_append_log("[color=#b993ff]T%d 已记录为分身。[/color]" % int(event.payload.get("timeline_index", 0)))
+			var reason: StringName = event.payload.get("end_reason", &"death")
+			var label := "已主动固化" if reason == &"crystallized" else "已记录为分身"
+			_append_log("[color=#b993ff]T%d %s。[/color]" % [int(event.payload.get("timeline_index", 0)), label])
 		&"timeline_started":
 			_append_log("[color=#b993ff]T%d 开始，旧时间线正在重演。[/color]" % int(event.payload.get("timeline_index", 0)))
 		&"battle_won":
@@ -394,7 +484,11 @@ func _panel_style(color: Color) -> StyleBoxFlat:
 
 
 func _time_state_text(time_state: StringName) -> String:
-	return "已知时间" if time_state == &"known" else "未知时间"
+	if time_state == &"known":
+		return "已知时间"
+	if time_state == &"disturbed":
+		return "扰动时间"
+	return "未知时间"
 
 
 func _phase_text(phase: StringName) -> String:
