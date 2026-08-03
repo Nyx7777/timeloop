@@ -7,6 +7,7 @@ var _checks := 0
 func _init() -> void:
 	_test_first_echo_resource()
 	_test_collision_course_resource()
+	_test_migrated_level_resources()
 	_test_command_serialization()
 	_test_checkpoint_json_round_trip()
 	_test_atomic_move_and_undo()
@@ -56,6 +57,74 @@ func _test_collision_course_resource() -> void:
 	_expect_equal(state.holes, [Vector2i(3, 6), Vector2i(3, 3), Vector2i(6, 1)], "collision_course converts H5 hole coordinates")
 	_expect_equal(state.get_unit(&"guard_01").position, Vector2i(2, 5), "collision_course converts enemy coordinates")
 	_expect(bool(state.rules.get("push_enabled", false)), "collision_course enables knockback")
+
+
+func _test_migrated_level_resources() -> void:
+	var cases := [
+		{
+			"path": "res://content/levels/crossed_paths.tres",
+			"id": &"crossed_paths",
+			"lives": 2,
+			"player": Vector2i(3, 7),
+			"enemies": [Vector2i(1, 4), Vector2i(5, 4)],
+			"walls": [Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(1, 5), Vector2i(5, 5), Vector2i(1, 6), Vector2i(5, 6)],
+			"holes": [],
+			"push": false,
+		},
+		{
+			"path": "res://content/levels/purple_crossfire.tres",
+			"id": &"purple_crossfire",
+			"lives": 3,
+			"player": Vector2i(0, 7),
+			"enemies": [Vector2i(6, 1), Vector2i(2, 5), Vector2i(6, 6), Vector2i(1, 3)],
+			"walls": [Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 5), Vector2i(5, 5), Vector2i(6, 3), Vector2i(1, 6)],
+			"holes": [],
+			"push": false,
+		},
+		{
+			"path": "res://content/levels/push_calibration.tres",
+			"id": &"push_calibration",
+			"lives": 2,
+			"player": Vector2i(1, 7),
+			"enemies": [Vector2i(1, 6), Vector2i(5, 4)],
+			"walls": [Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2)],
+			"holes": [Vector2i(1, 5), Vector2i(5, 3)],
+			"push": true,
+		},
+		{
+			"path": "res://content/levels/falling_timeline.tres",
+			"id": &"falling_timeline",
+			"lives": 3,
+			"player": Vector2i(0, 7),
+			"enemies": [Vector2i(1, 5), Vector2i(3, 4), Vector2i(5, 2), Vector2i(7, 5)],
+			"walls": [Vector2i(3, 1), Vector2i(3, 2), Vector2i(3, 5), Vector2i(3, 6), Vector2i(1, 3), Vector2i(6, 4)],
+			"holes": [Vector2i(1, 6), Vector2i(2, 4), Vector2i(5, 3), Vector2i(6, 1)],
+			"push": true,
+		},
+	]
+	for case in cases:
+		var level := load(case.path) as LevelDefinition
+		_expect(level != null, "%s resource loads" % case.id)
+		if level == null:
+			continue
+		_expect_equal(LevelValidator.validate(level).size(), 0, "%s passes validation" % case.id)
+		var state := BattleStateFactory.create_from_level(level, 779)
+		_expect(state != null, "%s creates battle state" % case.id)
+		if state == null:
+			continue
+		_expect_equal(state.level_id, case.id, "%s keeps its level id" % case.id)
+		_expect_equal(state.lives_left, case.lives, "%s keeps timeline count" % case.id)
+		_expect_equal(state.get_unit(&"player").position, case.player, "%s converts player row/col to x/y" % case.id)
+		var enemy_positions: Array[Vector2i] = []
+		for unit_id in state.unit_order:
+			var unit := state.get_unit(unit_id)
+			if unit.team == &"enemy":
+				enemy_positions.append(unit.position)
+		_expect_equal(enemy_positions, case.enemies, "%s converts every enemy row/col to x/y" % case.id)
+		_expect_equal(state.walls, case.walls, "%s converts every wall row/col to x/y" % case.id)
+		_expect_equal(state.holes, case.holes, "%s converts every hole row/col to x/y" % case.id)
+		_expect_equal(bool(state.rules.get("push_enabled", false)), case.push, "%s keeps knockback rule" % case.id)
+		_expect(bool(state.rules.get("crystallize_enabled", false)), "%s unlocks crystallize" % case.id)
 
 
 func _test_command_serialization() -> void:

@@ -6,7 +6,11 @@ const BattleEventPlayerScript := preload("res://presentation/battle/battle_event
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
 const LEVELS := [
 	{"label": "1 · 留下第一个自己", "path": "res://content/levels/first_echo.tres", "number": 1},
+	{"label": "2 · 双线交错", "path": "res://content/levels/crossed_paths.tres", "number": 2},
+	{"label": "3 · 紫色交火区", "path": "res://content/levels/purple_crossfire.tres", "number": 3},
+	{"label": "4 · 推力校准", "path": "res://content/levels/push_calibration.tres", "number": 4},
 	{"label": "5 · 历史冲撞", "path": "res://content/levels/collision_course.tres", "number": 5},
+	{"label": "6 · 坠落时间线", "path": "res://content/levels/falling_timeline.tres", "number": 6},
 ]
 
 var _session: BattleSession
@@ -74,7 +78,7 @@ func _build_interface() -> void:
 	_level_option = OptionButton.new()
 	for level_data in LEVELS:
 		_level_option.add_item(level_data.label)
-	_level_option.select(1)
+	_level_option.select(0)
 	_level_option.item_selected.connect(_on_level_selected)
 	sidebar.add_child(_level_option)
 

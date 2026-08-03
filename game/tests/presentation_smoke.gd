@@ -53,6 +53,7 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().instruction, "战斗胜利！", "victory message is shown")
 	_expect(bool(screen.get_ui_snapshot_for_test().end_turn_disabled), "battle controls lock after victory")
 
+	_test_all_level_selection(screen)
 	await _test_collision_course_screen(screen)
 
 	screen.queue_free()
@@ -61,7 +62,7 @@ func _run() -> void:
 
 
 func _test_collision_course_screen(screen: BattleScreen) -> void:
-	screen.select_level_for_test(1)
+	screen.select_level_for_test(4)
 	screen.set_instant_playback_for_test()
 	var state := _state_from_screen(screen)
 	_expect_equal(state.level_id, &"collision_course", "level selector loads collision_course")
@@ -79,6 +80,23 @@ func _test_collision_course_screen(screen: BattleScreen) -> void:
 	state = _state_from_screen(screen)
 	_expect_equal(state.phase, BattlePhase.TIMELINE_TRANSITION, "visible crystallize opens timeline transition")
 	_expect(bool(screen.get_ui_snapshot_for_test().next_timeline_visible), "crystallize uses timeline modal")
+
+
+func _test_all_level_selection(screen: BattleScreen) -> void:
+	var expected := [
+		{"id": &"first_echo", "holes": 0, "crystallize": false},
+		{"id": &"crossed_paths", "holes": 0, "crystallize": true},
+		{"id": &"purple_crossfire", "holes": 0, "crystallize": true},
+		{"id": &"push_calibration", "holes": 2, "crystallize": true},
+		{"id": &"collision_course", "holes": 3, "crystallize": true},
+		{"id": &"falling_timeline", "holes": 4, "crystallize": true},
+	]
+	for index in range(expected.size()):
+		screen.select_level_for_test(index)
+		var state := _state_from_screen(screen)
+		_expect_equal(state.level_id, expected[index].id, "selector loads level %d in order" % (index + 1))
+		_expect_equal(state.holes.size(), expected[index].holes, "level %d exposes expected holes" % (index + 1))
+		_expect_equal(screen.get_ui_snapshot_for_test().crystallize_visible, expected[index].crystallize, "level %d exposes expected crystallize rule" % (index + 1))
 
 
 func _test_state_sync_clears_preview_cache() -> void:

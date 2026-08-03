@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="LevelDefinition" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://content/definitions/level_definition.gd" id="1_level"]
+[ext_resource type="Script" path="res://content/definitions/unit_spawn_definition.gd" id="2_spawn"]
+
+[sub_resource type="Resource" id="Resource_player"]
+script = ExtResource("2_spawn")
+unit_id = &"player"
+definition_id = &"player_prototype"
+team = &"player"
+position = Vector2i(1, 7)
+max_hp = 4
+move_range = 3
+attack_damage = 1
+
+[sub_resource type="Resource" id="Resource_guard_01"]
+script = ExtResource("2_spawn")
+unit_id = &"guard_01"
+definition_id = &"guard_prototype"
+team = &"enemy"
+position = Vector2i(1, 6)
+max_hp = 3
+move_range = 1
+attack_damage = 2
+
+[sub_resource type="Resource" id="Resource_guard_02"]
+script = ExtResource("2_spawn")
+unit_id = &"guard_02"
+definition_id = &"guard_prototype"
+team = &"enemy"
+position = Vector2i(5, 4)
+max_hp = 3
+move_range = 1
+attack_damage = 2
+
+[resource]
+script = ExtResource("1_level")
+level_id = &"push_calibration"
+display_name = "推力校准"
+briefing = "普通攻击若没有击杀敌人，会把它向远离你的方向推一格。把守卫推入时间空洞，可以立即消灭它。"
+hint = "黑紫色漩涡是时间空洞。单位不会主动走入，但被攻击或撞击推入时会立刻死亡。"
+board_size = Vector2i(8, 8)
+lives = 2
+walls = Array[Vector2i]([Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2)])
+holes = Array[Vector2i]([Vector2i(1, 5), Vector2i(5, 3)])
+spawns = Array[Resource]([SubResource("Resource_player"), SubResource("Resource_guard_01"), SubResource("Resource_guard_02")])
+rules = {
+"crystallize_enabled": true,
+"push_enabled": true
+}
