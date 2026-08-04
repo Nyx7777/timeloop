@@ -3,10 +3,7 @@ extends Control
 
 signal cell_clicked(cell: Vector2i)
 
-const CELL_WIDTH := 96.0
-const CELL_HEIGHT := 48.0
-const HALF_WIDTH := CELL_WIDTH * 0.5
-const HALF_HEIGHT := CELL_HEIGHT * 0.5
+const BOARD_PADDING := 5.0
 
 const COLOR_FLOOR_A := Color("#243249")
 const COLOR_FLOOR_B := Color("#293852")
@@ -47,6 +44,11 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		queue_redraw()
+
+
 func sync_from_state(state: BattleState) -> void:
 	_board_size = state.board_size
 	_walls.assign(state.walls)
@@ -81,6 +83,21 @@ func get_preview_snapshot_for_test() -> Dictionary:
 		"enemy_attack_count": _enemy_attack_cells.size(),
 		"push_preview_count": _push_previews.size(),
 	}
+
+
+func get_layout_snapshot_for_test() -> Dictionary:
+	return {
+		"cell_size": _cell_size(),
+		"board_rect": _board_rect(),
+	}
+
+
+func get_cell_at_local_for_test(point: Vector2) -> Vector2i:
+	return _cell_from_local(point)
+
+
+func handle_input_for_test(event: InputEvent) -> void:
+	_gui_input(event)
 
 
 func set_interaction(reachable: Array[Vector2i], attackable: Array[Vector2i], enabled: bool, push_previews: Array = []) -> void:
@@ -133,6 +150,11 @@ func _gui_input(event: InputEvent) -> void:
 		if _interaction_enabled and _is_in_bounds(cell):
 			cell_clicked.emit(cell)
 			accept_event()
+	elif event is InputEventScreenTouch and event.pressed:
+		var cell := _cell_from_local(event.position)
+		if _interaction_enabled and _is_in_bounds(cell):
+			cell_clicked.emit(cell)
+			accept_event()
 
 
 func _draw() -> void:
@@ -142,50 +164,48 @@ func _draw() -> void:
 
 
 func _draw_board() -> void:
+	var board_rect := _board_rect()
+	draw_rect(board_rect.grow(3.0), Color("#080d17"), true)
+	draw_rect(board_rect.grow(3.0), Color("#7550a1"), false, 2.0)
 	for y in range(_board_size.y):
 		for x in range(_board_size.x):
 			var cell := Vector2i(x, y)
-			var center := grid_to_local(cell)
-			var diamond := _diamond(center)
+			var cell_rect := _cell_rect(cell)
 			var floor_color := COLOR_FLOOR_A if (x + y) % 2 == 0 else COLOR_FLOOR_B
-			draw_colored_polygon(diamond, floor_color)
-			draw_polyline(_closed_polygon(diamond), COLOR_GRID, 1.2, true)
+			draw_rect(cell_rect, floor_color, true)
+			draw_rect(cell_rect, COLOR_GRID, false, 1.1)
 			if _holes.has(cell):
-				draw_colored_polygon(diamond, Color("#160f2b"))
-				draw_circle(center, 12.0, Color("#7e4cba"), false, 3.0, true)
+				draw_rect(cell_rect.grow(-1.0), Color("#160f2b"), true)
+				var radius := _cell_size() * 0.30
+				draw_circle(grid_to_local(cell), radius, Color("#7e4cba"), false, maxf(2.0, _cell_size() * 0.07), true)
+				draw_circle(grid_to_local(cell), radius * 0.58, Color("#05030c"), true)
 	for wall in _walls:
 		_draw_wall(wall)
 
 
 func _draw_wall(cell: Vector2i) -> void:
-	var center := grid_to_local(cell)
-	var top_center := center - Vector2(0.0, 24.0)
-	var top := _diamond(top_center)
-	var left_side := PackedVector2Array([
-		top[3], top[2], top[2] + Vector2(0.0, 24.0), top[3] + Vector2(0.0, 24.0),
-	])
-	var right_side := PackedVector2Array([
-		top[1], top[2], top[2] + Vector2(0.0, 24.0), top[1] + Vector2(0.0, 24.0),
-	])
-	draw_colored_polygon(left_side, COLOR_WALL_SIDE.darkened(0.12))
-	draw_colored_polygon(right_side, COLOR_WALL_SIDE)
-	draw_colored_polygon(top, COLOR_WALL_TOP)
-	draw_polyline(_closed_polygon(top), COLOR_GRID.lightened(0.15), 1.2, true)
+	var cell_rect := _cell_rect(cell).grow(-1.0)
+	var lift := _cell_size() * 0.12
+	var top_rect := Rect2(cell_rect.position - Vector2(0.0, lift), Vector2(cell_rect.size.x, cell_rect.size.y * 0.76))
+	var side_rect := Rect2(top_rect.position + Vector2(0.0, top_rect.size.y), Vector2(top_rect.size.x, lift + cell_rect.size.y * 0.24))
+	draw_rect(side_rect, COLOR_WALL_SIDE, true)
+	draw_rect(top_rect, COLOR_WALL_TOP, true)
+	draw_rect(top_rect, COLOR_GRID.lightened(0.15), false, 1.2)
 
 
 func _draw_overlays() -> void:
 	for cell in _ghost_path_cells:
-		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_GHOST_PATH)
+		draw_rect(_cell_rect(cell).grow(-1.0), COLOR_GHOST_PATH, true)
 	for cell in _enemy_attack_cells:
-		draw_colored_polygon(_diamond(grid_to_local(cell)), Color(COLOR_ENEMY_ATTACK, 0.24))
+		draw_rect(_cell_rect(cell).grow(-1.0), Color(COLOR_ENEMY_ATTACK, 0.24), true)
 	for cell in _enemy_move_cells:
 		_draw_cell_outline(cell, COLOR_ENEMY_MOVE, 2.5)
 	for cell in _ghost_fire_cells:
 		_draw_cell_outline(cell, COLOR_GHOST_FIRE, 3.2)
 	for cell in _reachable:
-		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_MOVE)
+		draw_rect(_cell_rect(cell).grow(-1.0), COLOR_MOVE, true)
 	for cell in _attackable:
-		draw_colored_polygon(_diamond(grid_to_local(cell)), COLOR_ATTACK)
+		draw_rect(_cell_rect(cell).grow(-1.0), COLOR_ATTACK, true)
 	for preview_data in _push_previews:
 		var preview: Dictionary = preview_data
 		var cell: Vector2i = preview.get("display_cell", Vector2i(-1, -1))
@@ -202,9 +222,9 @@ func _draw_overlays() -> void:
 		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "!", 16, COLOR_ENEMY_ATTACK)
 	if _is_in_bounds(_hovered_cell):
 		var hover_color := Color(1.0, 1.0, 1.0, 0.65) if _interaction_enabled else Color(0.7, 0.7, 0.7, 0.25)
-		draw_polyline(_closed_polygon(_diamond(grid_to_local(_hovered_cell))), hover_color, 2.5, true)
+		draw_rect(_cell_rect(_hovered_cell).grow(-1.0), hover_color, false, 2.5)
 	if _is_in_bounds(_pulse_cell):
-		draw_colored_polygon(_diamond(grid_to_local(_pulse_cell)), Color(1.0, 0.88, 0.45, 0.55))
+		draw_rect(_cell_rect(_pulse_cell).grow(-1.0), Color(1.0, 0.88, 0.45, 0.55), true)
 
 
 func _draw_units() -> void:
@@ -219,20 +239,22 @@ func _draw_units() -> void:
 		var is_ghost := bool(entry.get("is_ghost", false))
 		var team: StringName = entry.get("team", &"")
 		var color := COLOR_GHOST if is_ghost else (COLOR_PLAYER if team == &"player" else COLOR_ENEMY)
-		draw_circle(screen_position + Vector2(0.0, 7.0), 19.0, Color(0.0, 0.0, 0.0, 0.34))
-		draw_circle(screen_position - Vector2(0.0, 8.0), 18.0, color)
-		draw_circle(screen_position - Vector2(0.0, 8.0), 18.0, color.lightened(0.25), false, 2.0, true)
+		var radius := clampf(_cell_size() * 0.30, 10.0, 19.0)
+		var body_center := screen_position - Vector2(0.0, radius * 0.18)
+		draw_circle(screen_position + Vector2(0.0, radius * 0.36), radius, Color(0.0, 0.0, 0.0, 0.34))
+		draw_circle(body_center, radius, color)
+		draw_circle(body_center, radius, color.lightened(0.25), false, 2.0, true)
 		var marker := "G" if is_ghost else ("P" if team == &"player" else "E")
-		_draw_centered_text(screen_position - Vector2(0.0, 2.0), marker, 16, Color("#101828"))
+		_draw_centered_text(body_center + Vector2(0.0, 4.0), marker, maxi(12, int(radius * 0.82)), Color("#101828"))
 		if bool(entry.get("disturbed", false)):
-			draw_circle(screen_position - Vector2(0.0, 8.0), 23.0, Color("#ff8fc7"), false, 3.0, true)
-			_draw_centered_text(screen_position + Vector2(18.0, -19.0), "~", 16, Color("#ff8fc7"))
+			draw_circle(body_center, radius + 4.0, Color("#ff8fc7"), false, 3.0, true)
+			_draw_centered_text(body_center + Vector2(radius, -radius * 0.7), "~", 14, Color("#ff8fc7"))
 		if not is_ghost:
-			_draw_hp_bar(screen_position + Vector2(-22.0, 18.0), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
+			_draw_hp_bar(screen_position + Vector2(-_cell_size() * 0.34, radius * 0.78), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
 
 
 func _draw_hp_bar(position: Vector2, hp: int, max_hp: int, color: Color) -> void:
-	var width := 44.0
+	var width := clampf(_cell_size() * 0.68, 24.0, 44.0)
 	draw_rect(Rect2(position, Vector2(width, 5.0)), Color("#111725"), true)
 	var ratio := clampf(float(hp) / float(maxi(max_hp, 1)), 0.0, 1.0)
 	draw_rect(Rect2(position + Vector2(1.0, 1.0), Vector2((width - 2.0) * ratio, 3.0)), color, true)
@@ -245,21 +267,19 @@ func _draw_centered_text(center: Vector2, text: String, font_size: int, color: C
 
 
 func grid_to_local(cell: Vector2i) -> Vector2:
-	var origin := Vector2(size.x * 0.5, 72.0)
-	return origin + Vector2((cell.x - cell.y) * HALF_WIDTH, (cell.x + cell.y) * HALF_HEIGHT)
+	var rect := _board_rect()
+	var cell_size := _cell_size()
+	return rect.position + Vector2((float(cell.x) + 0.5) * cell_size, (float(cell.y) + 0.5) * cell_size)
 
 
 func _cell_from_local(point: Vector2) -> Vector2i:
-	var origin := Vector2(size.x * 0.5, 72.0)
-	var relative := point - origin
-	var iso_x := relative.x / HALF_WIDTH
-	var iso_y := relative.y / HALF_HEIGHT
-	var candidate := Vector2i(roundi((iso_y + iso_x) * 0.5), roundi((iso_y - iso_x) * 0.5))
-	if not _is_in_bounds(candidate):
+	var rect := _board_rect()
+	if not rect.has_point(point):
 		return Vector2i(-1, -1)
-	var center := grid_to_local(candidate)
-	var normalized := absf(point.x - center.x) / HALF_WIDTH + absf(point.y - center.y) / HALF_HEIGHT
-	return candidate if normalized <= 1.0 else Vector2i(-1, -1)
+	var cell_size := _cell_size()
+	var local_point := point - rect.position
+	var candidate := Vector2i(floori(local_point.x / cell_size), floori(local_point.y / cell_size))
+	return candidate if _is_in_bounds(candidate) else Vector2i(-1, -1)
 
 
 func _play_move(event: BattleEvent, speed: float) -> void:
@@ -420,7 +440,7 @@ func _normalized_path(raw_path: Variant, origin: Vector2i, target: Vector2i) -> 
 
 
 func _draw_cell_outline(cell: Vector2i, color: Color, width: float) -> void:
-	draw_polyline(_closed_polygon(_diamond(grid_to_local(cell))), color, width, true)
+	draw_rect(_cell_rect(cell).grow(-1.0), color, false, width)
 
 
 func _ghost_entry(position: Vector2i) -> Dictionary:
@@ -443,19 +463,22 @@ func _sort_unit_ids(a: Variant, b: Variant) -> bool:
 	return (a_cell.x + a_cell.y) < (b_cell.x + b_cell.y)
 
 
-func _diamond(center: Vector2) -> PackedVector2Array:
-	return PackedVector2Array([
-		center + Vector2(0.0, -HALF_HEIGHT),
-		center + Vector2(HALF_WIDTH, 0.0),
-		center + Vector2(0.0, HALF_HEIGHT),
-		center + Vector2(-HALF_WIDTH, 0.0),
-	])
+func _cell_size() -> float:
+	var available_width := maxf(0.0, size.x - BOARD_PADDING * 2.0)
+	var available_height := maxf(0.0, size.y - BOARD_PADDING * 2.0)
+	return maxf(1.0, floorf(minf(available_width / float(_board_size.x), available_height / float(_board_size.y))))
 
 
-func _closed_polygon(points: PackedVector2Array) -> PackedVector2Array:
-	var closed := PackedVector2Array(points)
-	closed.append(points[0])
-	return closed
+func _board_rect() -> Rect2:
+	var cell_size := _cell_size()
+	var board_pixels := Vector2(float(_board_size.x) * cell_size, float(_board_size.y) * cell_size)
+	return Rect2((size - board_pixels) * 0.5, board_pixels)
+
+
+func _cell_rect(cell: Vector2i) -> Rect2:
+	var rect := _board_rect()
+	var cell_size := _cell_size()
+	return Rect2(rect.position + Vector2(float(cell.x) * cell_size, float(cell.y) * cell_size), Vector2(cell_size, cell_size))
 
 
 func _is_in_bounds(cell: Vector2i) -> bool:
