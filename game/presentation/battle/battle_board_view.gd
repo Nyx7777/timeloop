@@ -82,6 +82,7 @@ func get_preview_snapshot_for_test() -> Dictionary:
 		"enemy_move_count": _enemy_move_cells.size(),
 		"enemy_attack_count": _enemy_attack_cells.size(),
 		"push_preview_count": _push_previews.size(),
+		"push_collision_count": _push_previews.filter(func(preview: Dictionary) -> bool: return preview.get("outcome", &"") == &"collision").size(),
 	}
 
 
@@ -123,6 +124,9 @@ func play_event(event: BattleEvent, speed: float) -> void:
 			await _play_move(event, speed)
 		&"push_blocked":
 			await _play_cell_pulse(event.payload.get("cell", Vector2i(-1, -1)), 0.12, speed)
+		&"units_collided":
+			await _play_cell_pulse(event.payload.get("second_cell", Vector2i(-1, -1)), 0.12, speed)
+			await _play_cell_pulse(event.payload.get("first_cell", Vector2i(-1, -1)), 0.08, speed)
 		&"enemy_disturbed":
 			_apply_disturbed(event.actor_id)
 			await _wait(0.08, speed)
@@ -212,8 +216,8 @@ func _draw_overlays() -> void:
 		if not _is_in_bounds(cell):
 			continue
 		var outcome: StringName = preview.get("outcome", &"moved")
-		var color := Color("#8b98aa") if outcome == &"blocked" else (Color("#c69aff") if outcome == &"time_hole" else COLOR_PUSH)
-		var marker := "×" if outcome == &"blocked" else ("↓" if outcome == &"time_hole" else "→")
+		var color := Color("#ff9e64") if outcome == &"collision" else (Color("#8b98aa") if outcome == &"blocked" else (Color("#c69aff") if outcome == &"time_hole" else COLOR_PUSH))
+		var marker := "↯" if outcome == &"collision" else ("×" if outcome == &"blocked" else ("↓" if outcome == &"time_hole" else "→"))
 		_draw_cell_outline(cell, color, 2.8)
 		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), marker, 17, color)
 	for cell in _ghost_fire_cells:

@@ -125,10 +125,13 @@ func _test_state_sync_clears_preview_cache() -> void:
 	await board.play_event(preview_event, 0.0)
 	_expect_equal(board.get_preview_snapshot_for_test().ghost_fire_count, 1, "preview fixture exposes a ghost fire marker")
 	_expect_equal(board.get_preview_snapshot_for_test().enemy_attack_count, 1, "preview fixture exposes an enemy warning marker")
+	board.set_interaction([], [], true, [{"outcome": &"collision", "display_cell": Vector2i(1, 1)}])
+	_expect_equal(board.get_preview_snapshot_for_test().push_collision_count, 1, "knockback preview exposes an occupied-cell collision marker")
 	var level := load("res://content/levels/first_echo.tres") as LevelDefinition
 	board.sync_from_state(BattleStateFactory.create_from_level(level, 99))
 	_expect_equal(board.get_preview_snapshot_for_test().ghost_fire_count, 0, "state sync clears previous ghost markers")
 	_expect_equal(board.get_preview_snapshot_for_test().enemy_attack_count, 0, "state sync clears previous enemy markers")
+	_expect_equal(board.get_preview_snapshot_for_test().push_collision_count, 0, "state sync clears previous collision previews")
 	board.queue_free()
 	await process_frame
 

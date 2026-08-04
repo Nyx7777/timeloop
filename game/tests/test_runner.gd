@@ -16,7 +16,10 @@ func _init() -> void:
 	_test_first_echo_full_timeline_loop()
 	_test_last_life_defeat_does_not_create_ghost()
 	_test_attack_knockback_and_time_hole()
+	_test_knockback_collision_damages_both_units()
+	_test_collision_can_defeat_both_enemies()
 	_test_ghost_replays_fixed_knockback_direction()
+	_test_ghost_replays_collision_against_current_unit()
 	_test_fixed_history_collision_pushes_player()
 	_test_fixed_history_collision_into_hole_ends_timeline()
 	_test_disturbance_wakes_enemy_next_turn()
@@ -276,6 +279,36 @@ func _test_attack_knockback_and_time_hole() -> void:
 	_expect(_has_event(fallen, &"unit_died"), "time-hole fall publishes death event")
 
 
+func _test_knockback_collision_damages_both_units() -> void:
+	var state := _create_collision_state()
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.attack(&"player", Vector2i(1, 2)))
+	var pushed := session.state.get_unit(&"guard")
+	var blocker := session.state.get_unit(&"guard_02")
+	_expect(result.accepted, "attack into an occupied knockback cell is accepted")
+	_expect_equal(pushed.position, Vector2i(1, 2), "colliding pushed enemy stays in its original cell")
+	_expect_equal(blocker.position, Vector2i(1, 1), "collision target stays in its original cell")
+	_expect_equal(pushed.hp, 1, "pushed enemy takes attack damage plus one collision damage")
+	_expect_equal(blocker.hp, 2, "collision target takes one collision damage")
+	_expect(_has_event(result, &"units_collided"), "enemy collision publishes a dedicated event")
+	_expect(not _has_event(result, &"unit_pushed"), "enemy collision does not publish a movement event")
+	_expect_equal(session.state.current_recording[0].result.push_result.outcome, &"collision", "recorded attack stores the collision outcome")
+	_expect_equal(session.state.current_recording[0].result.push_result.collision_target_id, &"guard_02", "collision result identifies the second unit")
+	_expect_equal(_count_damage_events(result, &"collision"), 2, "collision emits one damage event for each unit")
+
+
+func _test_collision_can_defeat_both_enemies() -> void:
+	var state := _create_collision_state()
+	state.get_unit(&"guard").hp = 2
+	state.get_unit(&"guard_02").hp = 1
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.attack(&"player", Vector2i(1, 2)))
+	_expect(not session.state.get_unit(&"guard").active, "attack plus collision can defeat the pushed enemy")
+	_expect(not session.state.get_unit(&"guard_02").active, "collision damage can defeat the second enemy")
+	_expect_equal(session.state.battle_outcome, &"victory", "simultaneous collision deaths can complete the battle")
+	_expect(_has_event(result, &"battle_won"), "collision victory publishes the battle-won event")
+
+
 func _test_ghost_replays_fixed_knockback_direction() -> void:
 	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2), [Vector2i(1, 1)])
 	state.phase = BattlePhase.TIMELINE_TRANSITION
@@ -290,6 +323,24 @@ func _test_ghost_replays_fixed_knockback_direction() -> void:
 	_expect(result.accepted, "timeline with recorded push starts")
 	_expect_equal(session.state.battle_outcome, &"victory", "ghost fixed push can drop current enemy into a hole")
 	_expect(_has_event(result, &"unit_pushed"), "ghost knockback publishes displacement event")
+
+
+func _test_ghost_replays_collision_against_current_unit() -> void:
+	var state := _create_collision_state()
+	state.phase = BattlePhase.TIMELINE_TRANSITION
+	state.timeline_recordings = [{
+		"timeline_index": 1,
+		"end_turn": 1,
+		"end_reason": &"death",
+		"actions": [_recorded_attack(Vector2i(1, 3), Vector2i(1, 2), Vector2i(0, -1))],
+	}]
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.start_next_timeline())
+	_expect(result.accepted, "timeline with a recorded collision starts")
+	_expect(_has_event(result, &"units_collided"), "ghost knockback resolves collision against the current board")
+	_expect_equal(session.state.get_unit(&"guard").hp, 1, "ghost target takes recorded attack and collision damage")
+	_expect_equal(session.state.get_unit(&"guard_02").hp, 2, "current collision target takes ghost collision damage")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 2), "ghost collision keeps the pushed enemy in place")
 
 
 func _test_fixed_history_collision_pushes_player() -> void:
@@ -359,6 +410,14 @@ func _has_event(result: CommandResult, event_type: StringName) -> bool:
 	return false
 
 
+func _count_damage_events(result: CommandResult, cause: StringName) -> int:
+	var count := 0
+	for event in result.events:
+		if event.event_type == &"damage_applied" and event.payload.get("cause", &"") == cause:
+			count += 1
+	return count
+
+
 func _find_event(result: CommandResult, event_type: StringName) -> BattleEvent:
 	for event in result.events:
 		if event.event_type == event_type:
@@ -385,6 +444,15 @@ func _create_micro_state(player_position: Vector2i, enemy_position: Vector2i, ho
 		state.units[unit.unit_id] = unit
 		state.unit_order.append(unit.unit_id)
 		state.initial_units[unit.unit_id] = unit.to_dict()
+	return state
+
+
+func _create_collision_state() -> BattleState:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	var blocker := _make_unit(&"guard_02", &"enemy", Vector2i(1, 1), 3, 2, 1)
+	state.units[blocker.unit_id] = blocker
+	state.unit_order.append(blocker.unit_id)
+	state.initial_units[blocker.unit_id] = blocker.to_dict()
 	return state
 
 

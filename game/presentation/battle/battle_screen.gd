@@ -669,6 +669,12 @@ func _on_event_finished(event: BattleEvent) -> void:
 				_append_log("[color=#f2b86b]%s 被推到 %s。[/color]" % [event.actor_id, event.payload.get("to", Vector2i.ZERO)])
 		&"push_blocked":
 			_append_log("%s 的击退被阻挡。" % event.actor_id)
+		&"units_collided":
+			_append_log("[color=#ff9e64]%s 撞上 %s，双方各受到 %d 点碰撞伤害。[/color]" % [
+				event.payload.get("first_unit_id", &""),
+				event.payload.get("second_unit_id", &""),
+				int(event.payload.get("damage", 1)),
+			])
 		&"enemy_disturbed":
 			_append_log("[color=#ff8fc7]%s 发生扰动，将从回合 %d 开始清醒。[/color]" % [event.actor_id, int(event.payload.get("wake_turn", 0))])
 		&"attack_performed":

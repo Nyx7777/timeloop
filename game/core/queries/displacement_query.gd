@@ -10,6 +10,7 @@ static func evaluate_knockback(state: BattleState, target: UnitState, direction:
 		"to": destination,
 		"outcome": &"moved",
 		"blocked_reason": &"",
+		"collision_target_id": &"",
 	}
 	if state.holes.has(destination):
 		result.outcome = &"time_hole"
@@ -25,7 +26,7 @@ static func evaluate_knockback(state: BattleState, target: UnitState, direction:
 	for unit_id in state.unit_order:
 		var unit := state.get_unit(unit_id)
 		if unit != null and unit.active and unit.unit_id != target.unit_id and unit.position == destination:
-			result.outcome = &"blocked"
-			result.blocked_reason = &"occupied"
+			result.outcome = &"collision"
+			result.collision_target_id = unit.unit_id
 			return result
 	return result

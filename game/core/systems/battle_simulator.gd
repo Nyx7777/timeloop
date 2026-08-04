@@ -3,6 +3,7 @@ extends RefCounted
 
 const ENEMY_DIRECTIONS := [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
+const COLLISION_DAMAGE := 1
 
 
 func apply_command(state: BattleState, command: BattleCommand) -> CommandResult:
@@ -543,6 +544,30 @@ func _apply_knockback(state: BattleState, target: UnitState, direction: Vector2i
 		_kill_unit(target, source_id, &"time_hole", events)
 		return result
 
+	if result.outcome == &"collision":
+		var collision_target := state.get_unit(result.get("collision_target_id", &""))
+		if collision_target == null or not collision_target.active:
+			result.outcome = &"blocked"
+			result.blocked_reason = &"collision_target_missing"
+			events.append(BattleEvent.create(&"push_blocked", target.unit_id, {
+				"cell": origin,
+				"attempted_cell": destination,
+				"source_id": source_id,
+				"reason": result.blocked_reason,
+			}))
+			return result
+		events.append(BattleEvent.create(&"units_collided", target.unit_id, {
+			"first_unit_id": target.unit_id,
+			"second_unit_id": collision_target.unit_id,
+			"first_cell": origin,
+			"second_cell": destination,
+			"source_id": source_id,
+			"damage": COLLISION_DAMAGE,
+		}))
+		_apply_damage(state, target, COLLISION_DAMAGE, source_id, events, &"collision")
+		_apply_damage(state, collision_target, COLLISION_DAMAGE, source_id, events, &"collision")
+		return result
+
 	if result.outcome == &"blocked":
 		events.append(BattleEvent.create(&"push_blocked", target.unit_id, {
 			"cell": origin,
@@ -636,18 +661,20 @@ func _is_push_enabled(state: BattleState) -> bool:
 	return bool(state.rules.get("push_enabled", false))
 
 
-func _apply_damage(state: BattleState, target: UnitState, damage: int, source_id: StringName, events: Array[BattleEvent]) -> void:
+func _apply_damage(state: BattleState, target: UnitState, damage: int, source_id: StringName, events: Array[BattleEvent], cause: StringName = &"attack") -> void:
 	target.hp = maxi(0, target.hp - damage)
 	events.append(BattleEvent.create(&"damage_applied", source_id, {
 		"target_id": target.unit_id,
 		"damage": damage,
 		"remaining_hp": target.hp,
+		"cause": cause,
 	}))
 	if target.hp <= 0:
 		target.active = false
 		events.append(BattleEvent.create(&"unit_died", target.unit_id, {
 			"source_id": source_id,
 			"cell": target.position,
+			"cause": cause,
 		}))
 
 
