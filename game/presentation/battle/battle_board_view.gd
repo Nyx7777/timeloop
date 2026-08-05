@@ -4,6 +4,8 @@ extends Control
 signal cell_clicked(cell: Vector2i)
 
 const BOARD_PADDING := 5.0
+const OBSTACLE_DRAW_WIDTH_CELLS := 1.45
+const OBSTACLE_DRAW_HEIGHT_CELLS := 1.22
 const FLOOR_TILE_TEXTURE := preload("res://assets/environment/lab_floor_tile.png")
 const OBSTACLE_SERVER_TEXTURE := preload("res://assets/environment/lab_obstacle_server.png")
 const OBSTACLE_PILLAR_TEXTURE := preload("res://assets/environment/lab_obstacle_pillar.png")
@@ -194,7 +196,10 @@ func _draw_board() -> void:
 func _draw_wall(cell: Vector2i) -> void:
 	var cell_rect := _cell_rect(cell)
 	var texture := OBSTACLE_SERVER_TEXTURE if (cell.x + cell.y) % 2 == 0 else OBSTACLE_PILLAR_TEXTURE
-	var sprite_size := Vector2(cell_rect.size.x * 1.28, cell_rect.size.y * 1.5)
+	var sprite_size := Vector2(
+		cell_rect.size.x * OBSTACLE_DRAW_WIDTH_CELLS,
+		cell_rect.size.y * OBSTACLE_DRAW_HEIGHT_CELLS
+	)
 	var sprite_rect := Rect2(
 		Vector2(cell_rect.get_center().x - sprite_size.x * 0.5, cell_rect.end.y - sprite_size.y),
 		sprite_size
