@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://brgtr8dhaxhuv"
-path="res://.godot/imported/lab_wall_block.png-7f1a064caf9346b1d87eb78e2a1671e9.ctex"
+uid="uid://c4aarytw04c0d"
+path="res://.godot/imported/lab_obstacle_pillar.png-f2de42d5c777c0313d0725caa1490f62.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/environment/lab_wall_block.png"
-dest_files=["res://.godot/imported/lab_wall_block.png-7f1a064caf9346b1d87eb78e2a1671e9.ctex"]
+source_file="res://assets/environment/lab_obstacle_pillar.png"
+dest_files=["res://.godot/imported/lab_obstacle_pillar.png-f2de42d5c777c0313d0725caa1490f62.ctex"]
 
 [params]
 

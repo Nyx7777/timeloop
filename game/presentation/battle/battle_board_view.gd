@@ -5,7 +5,8 @@ signal cell_clicked(cell: Vector2i)
 
 const BOARD_PADDING := 5.0
 const FLOOR_TILE_TEXTURE := preload("res://assets/environment/lab_floor_tile.png")
-const WALL_BLOCK_TEXTURE := preload("res://assets/environment/lab_wall_block.png")
+const OBSTACLE_SERVER_TEXTURE := preload("res://assets/environment/lab_obstacle_server.png")
+const OBSTACLE_PILLAR_TEXTURE := preload("res://assets/environment/lab_obstacle_pillar.png")
 
 const COLOR_FLOOR_A := Color("#ffffff")
 const COLOR_FLOOR_B := Color("#f4f7fb")
@@ -184,13 +185,21 @@ func _draw_board() -> void:
 				var radius := _cell_size() * 0.30
 				draw_circle(grid_to_local(cell), radius, Color("#7e4cba"), false, maxf(2.0, _cell_size() * 0.07), true)
 				draw_circle(grid_to_local(cell), radius * 0.58, Color("#05030c"), true)
-	for wall in _walls:
-		_draw_wall(wall)
+	for wall_row in range(_board_size.y):
+		for wall in _walls:
+			if wall.y == wall_row:
+				_draw_wall(wall)
 
 
 func _draw_wall(cell: Vector2i) -> void:
 	var cell_rect := _cell_rect(cell)
-	draw_texture_rect(WALL_BLOCK_TEXTURE, cell_rect, false)
+	var texture := OBSTACLE_SERVER_TEXTURE if (cell.x + cell.y) % 2 == 0 else OBSTACLE_PILLAR_TEXTURE
+	var sprite_size := Vector2(cell_rect.size.x * 1.28, cell_rect.size.y * 1.5)
+	var sprite_rect := Rect2(
+		Vector2(cell_rect.get_center().x - sprite_size.x * 0.5, cell_rect.end.y - sprite_size.y),
+		sprite_size
+	)
+	draw_texture_rect(texture, sprite_rect, false)
 
 
 func _draw_overlays() -> void:
