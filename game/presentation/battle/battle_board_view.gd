@@ -9,6 +9,12 @@ const OBSTACLE_DRAW_HEIGHT_CELLS := 1.22
 const FLOOR_TILE_TEXTURE := preload("res://assets/environment/lab_floor_tile.png")
 const OBSTACLE_SERVER_TEXTURE := preload("res://assets/environment/lab_obstacle_server.png")
 const OBSTACLE_PILLAR_TEXTURE := preload("res://assets/environment/lab_obstacle_pillar.png")
+const PLAYER_IDLE_TEXTURE := preload("res://assets/characters/player_idle.png")
+const GHOST_IDLE_TEXTURE := preload("res://assets/characters/ghost_idle.png")
+const GUARD_IDLE_TEXTURE := preload("res://assets/characters/guard_idle.png")
+const UNIT_DRAW_WIDTH_CELLS := 1.10
+const UNIT_DRAW_HEIGHT_CELLS := 1.18
+const UNIT_FOOT_OFFSET_CELLS := 0.28
 
 const COLOR_FLOOR_A := Color("#ffffff")
 const COLOR_FLOOR_B := Color("#f4f7fb")
@@ -253,18 +259,25 @@ func _draw_units() -> void:
 		var is_ghost := bool(entry.get("is_ghost", false))
 		var team: StringName = entry.get("team", &"")
 		var color := COLOR_GHOST if is_ghost else (COLOR_PLAYER if team == &"player" else COLOR_ENEMY)
-		var radius := clampf(_cell_size() * 0.30, 10.0, 19.0)
-		var body_center := screen_position - Vector2(0.0, radius * 0.18)
-		draw_circle(screen_position + Vector2(0.0, radius * 0.36), radius, Color(0.0, 0.0, 0.0, 0.34))
-		draw_circle(body_center, radius, color)
-		draw_circle(body_center, radius, color.lightened(0.25), false, 2.0, true)
-		var marker := "G" if is_ghost else ("P" if team == &"player" else "E")
-		_draw_centered_text(body_center + Vector2(0.0, 4.0), marker, maxi(12, int(radius * 0.82)), Color("#101828"))
+		var cell_size := _cell_size()
+		var foot_center := screen_position + Vector2(0.0, cell_size * UNIT_FOOT_OFFSET_CELLS)
+		var ring_radius := cell_size * 0.27
+		draw_circle(foot_center, ring_radius, Color(0.0, 0.0, 0.0, 0.38))
+		draw_circle(foot_center, ring_radius * 0.86, Color(color, 0.20))
+		draw_circle(foot_center, ring_radius, color.lightened(0.18), false, maxf(1.5, cell_size * 0.045), true)
+		var sprite_size := Vector2(cell_size * UNIT_DRAW_WIDTH_CELLS, cell_size * UNIT_DRAW_HEIGHT_CELLS)
+		var sprite_rect := Rect2(
+			Vector2(foot_center.x - sprite_size.x * 0.5, foot_center.y - sprite_size.y),
+			sprite_size
+		)
+		var texture: Texture2D = GHOST_IDLE_TEXTURE if is_ghost else (PLAYER_IDLE_TEXTURE if team == &"player" else GUARD_IDLE_TEXTURE)
+		var sprite_modulate := Color(1.0, 1.0, 1.0, 0.88) if is_ghost else Color.WHITE
+		draw_texture_rect(texture, sprite_rect, false, sprite_modulate)
 		if bool(entry.get("disturbed", false)):
-			draw_circle(body_center, radius + 4.0, Color("#ff8fc7"), false, 3.0, true)
-			_draw_centered_text(body_center + Vector2(radius, -radius * 0.7), "~", 14, Color("#ff8fc7"))
+			draw_circle(foot_center, ring_radius + 3.0, Color("#ff8fc7"), false, 3.0, true)
+			_draw_centered_text(screen_position + Vector2(cell_size * 0.34, -cell_size * 0.42), "~", 14, Color("#ff8fc7"))
 		if not is_ghost:
-			_draw_hp_bar(screen_position + Vector2(-_cell_size() * 0.34, radius * 0.78), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
+			_draw_hp_bar(screen_position + Vector2(-cell_size * 0.34, cell_size * 0.36), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
 
 
 func _draw_hp_bar(position: Vector2, hp: int, max_hp: int, color: Color) -> void:
