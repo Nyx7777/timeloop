@@ -4,12 +4,12 @@ extends Control
 signal cell_clicked(cell: Vector2i)
 
 const BOARD_PADDING := 5.0
+const FLOOR_TILE_TEXTURE := preload("res://assets/environment/lab_floor_tile.png")
+const WALL_BLOCK_TEXTURE := preload("res://assets/environment/lab_wall_block.png")
 
-const COLOR_FLOOR_A := Color("#243249")
-const COLOR_FLOOR_B := Color("#293852")
-const COLOR_GRID := Color("#577091")
-const COLOR_WALL_TOP := Color("#65758d")
-const COLOR_WALL_SIDE := Color("#35445c")
+const COLOR_FLOOR_A := Color("#ffffff")
+const COLOR_FLOOR_B := Color("#f4f7fb")
+const COLOR_GRID := Color("#718096")
 const COLOR_MOVE := Color(0.20, 0.88, 0.64, 0.32)
 const COLOR_ATTACK := Color(1.0, 0.26, 0.31, 0.42)
 const COLOR_GHOST := Color("#ab78ff")
@@ -40,6 +40,7 @@ var _interaction_enabled := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	clip_contents = false
 	queue_redraw()
 
@@ -176,7 +177,7 @@ func _draw_board() -> void:
 			var cell := Vector2i(x, y)
 			var cell_rect := _cell_rect(cell)
 			var floor_color := COLOR_FLOOR_A if (x + y) % 2 == 0 else COLOR_FLOOR_B
-			draw_rect(cell_rect, floor_color, true)
+			draw_texture_rect(FLOOR_TILE_TEXTURE, cell_rect, false, floor_color)
 			draw_rect(cell_rect, COLOR_GRID, false, 1.1)
 			if _holes.has(cell):
 				draw_rect(cell_rect.grow(-1.0), Color("#160f2b"), true)
@@ -188,13 +189,8 @@ func _draw_board() -> void:
 
 
 func _draw_wall(cell: Vector2i) -> void:
-	var cell_rect := _cell_rect(cell).grow(-1.0)
-	var lift := _cell_size() * 0.12
-	var top_rect := Rect2(cell_rect.position - Vector2(0.0, lift), Vector2(cell_rect.size.x, cell_rect.size.y * 0.76))
-	var side_rect := Rect2(top_rect.position + Vector2(0.0, top_rect.size.y), Vector2(top_rect.size.x, lift + cell_rect.size.y * 0.24))
-	draw_rect(side_rect, COLOR_WALL_SIDE, true)
-	draw_rect(top_rect, COLOR_WALL_TOP, true)
-	draw_rect(top_rect, COLOR_GRID.lightened(0.15), false, 1.2)
+	var cell_rect := _cell_rect(cell)
+	draw_texture_rect(WALL_BLOCK_TEXTURE, cell_rect, false)
 
 
 func _draw_overlays() -> void:
