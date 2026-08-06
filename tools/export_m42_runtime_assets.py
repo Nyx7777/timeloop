@@ -65,7 +65,10 @@ def export_character(source: Path, destination: Path) -> None:
         max(1, round(subject.width * scale)),
         max(1, round(subject.height * scale)),
     )
-    subject = subject.resize(size, Image.Resampling.LANCZOS)
+    # Character sources already use deliberate pixel clusters. A smoothing
+    # filter blends those clusters into soft edges at 48x64, while nearest
+    # sampling keeps the runtime sprite consistent with the crisp board art.
+    subject = subject.resize(size, Image.Resampling.NEAREST)
     canvas = Image.new("RGBA", (48, 64), (0, 0, 0, 0))
     x = (canvas.width - subject.width) // 2
     y = 61 - subject.height
