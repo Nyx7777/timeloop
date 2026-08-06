@@ -9,9 +9,13 @@ const OBSTACLE_DRAW_HEIGHT_CELLS := 1.22
 const FLOOR_TILE_TEXTURE := preload("res://assets/environment/lab_floor_tile.png")
 const OBSTACLE_SERVER_TEXTURE := preload("res://assets/environment/lab_obstacle_server.png")
 const OBSTACLE_PILLAR_TEXTURE := preload("res://assets/environment/lab_obstacle_pillar.png")
+const TIME_VOID_TEXTURE := preload("res://assets/environment/time_void_tile.png")
+const BOARD_FRAME_TEXTURE := preload("res://assets/ui/m42c/board_frame_border.png")
 const PLAYER_IDLE_TEXTURE := preload("res://assets/characters/player_idle.png")
 const GHOST_IDLE_TEXTURE := preload("res://assets/characters/ghost_idle.png")
 const GUARD_IDLE_TEXTURE := preload("res://assets/characters/guard_idle.png")
+const PLAYER_HP_TEXTURE := preload("res://assets/ui/m42c/hp_bar_player.png")
+const ENEMY_HP_TEXTURE := preload("res://assets/ui/m42c/hp_bar_enemy.png")
 const UNIT_DRAW_WIDTH_CELLS := 1.10
 const UNIT_DRAW_HEIGHT_CELLS := 1.18
 const UNIT_FOOT_OFFSET_CELLS := 0.28
@@ -45,12 +49,19 @@ var _push_previews: Array = []
 var _hovered_cell := Vector2i(-1, -1)
 var _pulse_cell := Vector2i(-1, -1)
 var _interaction_enabled := false
+var _board_frame_style: StyleBoxTexture
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	clip_contents = false
+	_board_frame_style = StyleBoxTexture.new()
+	_board_frame_style.texture = BOARD_FRAME_TEXTURE
+	_board_frame_style.texture_margin_left = 18.0
+	_board_frame_style.texture_margin_top = 18.0
+	_board_frame_style.texture_margin_right = 18.0
+	_board_frame_style.texture_margin_bottom = 18.0
 	queue_redraw()
 
 
@@ -179,8 +190,8 @@ func _draw() -> void:
 
 func _draw_board() -> void:
 	var board_rect := _board_rect()
-	draw_rect(board_rect.grow(3.0), Color("#080d17"), true)
-	draw_rect(board_rect.grow(3.0), Color("#7550a1"), false, 2.0)
+	draw_style_box(_board_frame_style, board_rect.grow(7.0))
+	draw_rect(board_rect.grow(2.0), Color("#080d17"), true)
 	for y in range(_board_size.y):
 		for x in range(_board_size.x):
 			var cell := Vector2i(x, y)
@@ -189,10 +200,8 @@ func _draw_board() -> void:
 			draw_texture_rect(FLOOR_TILE_TEXTURE, cell_rect, false, floor_color)
 			draw_rect(cell_rect, COLOR_GRID, false, 1.1)
 			if _holes.has(cell):
-				draw_rect(cell_rect.grow(-1.0), Color("#160f2b"), true)
-				var radius := _cell_size() * 0.30
-				draw_circle(grid_to_local(cell), radius, Color("#7e4cba"), false, maxf(2.0, _cell_size() * 0.07), true)
-				draw_circle(grid_to_local(cell), radius * 0.58, Color("#05030c"), true)
+				draw_rect(cell_rect.grow(-1.0), Color("#110923"), true)
+				draw_texture_rect(TIME_VOID_TEXTURE, cell_rect.grow(-1.0), false)
 	for wall_row in range(_board_size.y):
 		for wall in _walls:
 			if wall.y == wall_row:
@@ -277,14 +286,29 @@ func _draw_units() -> void:
 			draw_circle(foot_center, ring_radius + 3.0, Color("#ff8fc7"), false, 3.0, true)
 			_draw_centered_text(screen_position + Vector2(cell_size * 0.34, -cell_size * 0.42), "~", 14, Color("#ff8fc7"))
 		if not is_ghost:
-			_draw_hp_bar(screen_position + Vector2(-cell_size * 0.34, cell_size * 0.36), int(entry.get("hp", 0)), int(entry.get("max_hp", 1)), color)
+			_draw_hp_bar(
+				screen_position + Vector2(-cell_size * 0.34, cell_size * 0.36),
+				int(entry.get("hp", 0)),
+				int(entry.get("max_hp", 1)),
+				team
+			)
 
 
-func _draw_hp_bar(position: Vector2, hp: int, max_hp: int, color: Color) -> void:
+func _draw_hp_bar(position: Vector2, hp: int, max_hp: int, team: StringName) -> void:
 	var width := clampf(_cell_size() * 0.68, 24.0, 44.0)
-	draw_rect(Rect2(position, Vector2(width, 5.0)), Color("#111725"), true)
+	var height := 6.0
+	var bar_rect := Rect2(position, Vector2(width, height))
+	var texture: Texture2D = PLAYER_HP_TEXTURE if team == &"player" else ENEMY_HP_TEXTURE
+	draw_texture_rect(texture, bar_rect, false)
 	var ratio := clampf(float(hp) / float(maxi(max_hp, 1)), 0.0, 1.0)
-	draw_rect(Rect2(position + Vector2(1.0, 1.0), Vector2((width - 2.0) * ratio, 3.0)), color, true)
+	if ratio < 1.0:
+		var missing_width := (width - 2.0) * (1.0 - ratio)
+		draw_rect(
+			Rect2(position + Vector2(1.0 + (width - 2.0) * ratio, 1.0), Vector2(missing_width, height - 2.0)),
+			Color("#111725"),
+			true
+		)
+	draw_rect(bar_rect, Color("#050914"), false, 1.0)
 
 
 func _draw_centered_text(center: Vector2, text: String, font_size: int, color: Color) -> void:

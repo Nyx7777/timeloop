@@ -18,6 +18,7 @@ func _run() -> void:
 		quit(1)
 		return
 	var output_dir := String(args[0]).replace("\\", "/").trim_suffix("/")
+	var level_index := int(args[1]) if args.size() > 1 else 0
 	DirAccess.make_dir_recursive_absolute(output_dir)
 
 	var packed_scene := load("res://presentation/battle/battle_screen.tscn") as PackedScene
@@ -30,6 +31,9 @@ func _run() -> void:
 		root.size = layout_case.size
 		var screen := packed_scene.instantiate() as BattleScreen
 		root.add_child(screen)
+		await process_frame
+		await process_frame
+		screen.select_level_for_test(level_index)
 		await process_frame
 		await process_frame
 		var image := root.get_texture().get_image()

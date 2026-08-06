@@ -4,17 +4,24 @@ M4.2B v2 角色重制 — 囚服本体 + 时间扭曲敌人
 """
 import json
 import base64
+import os
 import requests
 from pathlib import Path
 
 GATEWAY_URL = "https://ai-gateway.testing.hetao101.com/v1/images/generations"
-GATEWAY_TOKEN = "sk-YUzzgANfKgt_hdJxvELK5g"
 GATEWAY_MODEL = "azure.public.gpt-image-2"
 
-HEADERS = {
-    "Authorization": f"Bearer {GATEWAY_TOKEN}",
-    "Content-Type": "application/json",
-}
+
+def gateway_headers():
+    token = os.environ.get("TIMELOOP_IMAGE_GATEWAY_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "Set TIMELOOP_IMAGE_GATEWAY_TOKEN before running this generation script."
+        )
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
 
 output_dir = Path(__file__).parent / "source_assets" / "characters" / "m42b_v2"
 output_dir.mkdir(parents=True, exist_ok=True)
@@ -101,7 +108,7 @@ def generate_with_refs(prompt_text, size, ref_images):
     resp = requests.post(
         GATEWAY_URL,
         json=payload,
-        headers=HEADERS,
+        headers=gateway_headers(),
         timeout=300,
     )
     if resp.status_code != 200:
@@ -111,7 +118,7 @@ def generate_with_refs(prompt_text, size, ref_images):
         resp = requests.post(
             GATEWAY_URL,
             json=payload,
-            headers=HEADERS,
+            headers=gateway_headers(),
             timeout=300,
         )
     resp.raise_for_status()

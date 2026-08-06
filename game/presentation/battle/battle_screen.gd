@@ -4,6 +4,14 @@ extends Control
 const BattleBoardViewScript := preload("res://presentation/battle/battle_board_view.gd")
 const BattleEventPlayerScript := preload("res://presentation/battle/battle_event_player.gd")
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
+const HUD_PANEL_TEXTURE := preload("res://assets/ui/m42c/hud_panel_top.png")
+const HINT_BAR_TEXTURE := preload("res://assets/ui/m42c/hint_bar_bg.png")
+const BUTTON_MOVE_TEXTURE := preload("res://assets/ui/m42c/button_move_9patch.png")
+const BUTTON_ATTACK_TEXTURE := preload("res://assets/ui/m42c/button_attack_9patch.png")
+const BUTTON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m42c/button_crystallize_9patch.png")
+const BUTTON_END_TURN_TEXTURE := preload("res://assets/ui/m42c/button_endturn_9patch.png")
+const SEQUENCE_ACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_active.png")
+const SEQUENCE_INACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_inactive.png")
 
 const LEVELS := [
 	{"label": "1 · 留下第一个自己", "path": "res://content/levels/first_echo.tres", "number": 1},
@@ -56,6 +64,7 @@ var _active_actor: StringName = &""
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_build_interface()
 	_start_battle()
 
@@ -107,7 +116,7 @@ func _build_top_hud(parent: VBoxContainer) -> void:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size.y = 48.0
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel_style(COLOR_PANEL, Color("#24526b"), 1, 8, 8))
+	panel.add_theme_stylebox_override("panel", _texture_style(HUD_PANEL_TEXTURE, 8.0, 8.0))
 	parent.add_child(panel)
 
 	var row := HBoxContainer.new()
@@ -160,7 +169,7 @@ func _build_board(parent: VBoxContainer) -> void:
 	board_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	board_panel.custom_minimum_size.y = 420.0
-	board_panel.add_theme_stylebox_override("panel", _panel_style(Color("#101827"), Color("#4b2a70"), 2, 10, 3))
+	board_panel.add_theme_stylebox_override("panel", _panel_style(Color("#0a0f1b"), Color("#201936"), 1, 10, 3))
 	parent.add_child(board_panel)
 
 	_board = BattleBoardViewScript.new()
@@ -181,6 +190,11 @@ func _build_action_area(parent: VBoxContainer) -> void:
 	content.add_theme_constant_override("separation", 7)
 	panel.add_child(content)
 
+	var hint_panel := PanelContainer.new()
+	hint_panel.custom_minimum_size.y = 34.0
+	hint_panel.add_theme_stylebox_override("panel", _texture_style(HINT_BAR_TEXTURE, 7.0, 5.0))
+	content.add_child(hint_panel)
+
 	_instruction_label = Label.new()
 	_instruction_label.custom_minimum_size.y = 34.0
 	_instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -188,28 +202,28 @@ func _build_action_area(parent: VBoxContainer) -> void:
 	_instruction_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_instruction_label.add_theme_font_size_override("font_size", 13)
 	_instruction_label.add_theme_color_override("font_color", Color("#d7e5f7"))
-	content.add_child(_instruction_label)
+	hint_panel.add_child(_instruction_label)
 
 	var actions := HBoxContainer.new()
 	actions.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	actions.add_theme_constant_override("separation", 6)
 	content.add_child(actions)
 
-	_move_button = _action_button("↕\n移动", COLOR_CYAN)
+	_move_button = _action_button("↕\n移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE)
 	_move_button.toggle_mode = true
 	_move_button.pressed.connect(_on_move_pressed)
 	actions.add_child(_move_button)
 
-	_attack_button = _action_button("⚔\n攻击", COLOR_RED)
+	_attack_button = _action_button("⚔\n攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE)
 	_attack_button.toggle_mode = true
 	_attack_button.pressed.connect(_on_attack_pressed)
 	actions.add_child(_attack_button)
 
-	_crystallize_button = _action_button("◆\n固化", COLOR_PURPLE)
+	_crystallize_button = _action_button("◆\n固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE)
 	_crystallize_button.pressed.connect(_on_crystallize_pressed)
 	actions.add_child(_crystallize_button)
 
-	_end_turn_button = _action_button("⌛\n结束", COLOR_GOLD)
+	_end_turn_button = _action_button("⌛\n结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE)
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	actions.add_child(_end_turn_button)
 
@@ -709,7 +723,7 @@ func _hud_label(text_value: String, color: Color, alignment: HorizontalAlignment
 	return label
 
 
-func _action_button(text_value: String, accent: Color) -> Button:
+func _action_button(text_value: String, accent: Color, texture: Texture2D) -> Button:
 	var button := Button.new()
 	button.text = text_value
 	button.custom_minimum_size = Vector2(72.0, 92.0)
@@ -721,17 +735,17 @@ func _action_button(text_value: String, accent: Color) -> Button:
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_color_override("font_pressed_color", Color.WHITE)
 	button.add_theme_color_override("font_disabled_color", Color("#606a7d"))
-	button.add_theme_stylebox_override("normal", _panel_style(Color("#121b2b"), accent.darkened(0.2), 2, 8, 5))
-	button.add_theme_stylebox_override("hover", _panel_style(Color("#17243a"), accent, 2, 8, 5))
-	button.add_theme_stylebox_override("pressed", _panel_style(accent.darkened(0.72), accent.lightened(0.18), 3, 8, 5))
-	button.add_theme_stylebox_override("disabled", _panel_style(Color("#0d121d"), Color("#343b4a"), 1, 8, 5))
+	button.add_theme_stylebox_override("normal", _texture_style(texture, 10.0, 7.0))
+	button.add_theme_stylebox_override("hover", _texture_style(texture, 10.0, 7.0, Color(1.18, 1.18, 1.18, 1.0)))
+	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 7.0, Color(0.70, 0.78, 0.88, 1.0)))
+	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.34, 0.36, 0.42, 0.82)))
 	return button
 
 
 func _sequence_chip(text_value: String, accent: Color, active: bool) -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.custom_minimum_size = Vector2(42.0, 30.0)
-	chip.add_theme_stylebox_override("panel", _panel_style(accent.darkened(0.74) if active else Color("#111726"), accent if active else accent.darkened(0.48), 2 if active else 1, 5, 3))
+	chip.add_theme_stylebox_override("panel", _texture_style(SEQUENCE_ACTIVE_TEXTURE if active else SEQUENCE_INACTIVE_TEXTURE, 8.0, 3.0))
 	var label := Label.new()
 	label.text = "▼ %s" % text_value if active else text_value
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -740,6 +754,21 @@ func _sequence_chip(text_value: String, accent: Color, active: bool) -> PanelCon
 	label.add_theme_color_override("font_color", Color.WHITE if active else accent.lightened(0.05))
 	chip.add_child(label)
 	return chip
+
+
+func _texture_style(texture: Texture2D, texture_margin: float, content_margin: float, modulate := Color.WHITE) -> StyleBoxTexture:
+	var style := StyleBoxTexture.new()
+	style.texture = texture
+	style.texture_margin_left = texture_margin
+	style.texture_margin_top = texture_margin
+	style.texture_margin_right = texture_margin
+	style.texture_margin_bottom = texture_margin
+	style.content_margin_left = content_margin
+	style.content_margin_top = content_margin
+	style.content_margin_right = content_margin
+	style.content_margin_bottom = content_margin
+	style.modulate_color = modulate
+	return style
 
 
 func _panel_style(color: Color, border_color := Color("#283a57"), border_width := 1, radius := 8, margin := 0) -> StyleBoxFlat:

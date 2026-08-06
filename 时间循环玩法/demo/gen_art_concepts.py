@@ -4,17 +4,24 @@
 """
 import json
 import base64
+import os
 import requests
 from pathlib import Path
 
 GATEWAY_URL = "https://ai-gateway.testing.hetao101.com/v1/images/generations"
-GATEWAY_TOKEN = "sk-YUzzgANfKgt_hdJxvELK5g"
 GATEWAY_MODEL = "azure.public.gpt-image-2"
 
-HEADERS = {
-    "Authorization": f"Bearer {GATEWAY_TOKEN}",
-    "Content-Type": "application/json",
-}
+
+def gateway_headers():
+    token = os.environ.get("TIMELOOP_IMAGE_GATEWAY_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "Set TIMELOOP_IMAGE_GATEWAY_TOKEN before running this generation script."
+        )
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
 
 output_dir = Path(__file__).parent / "art_concepts"
 output_dir.mkdir(exist_ok=True)
@@ -154,7 +161,7 @@ def generate(prompt_data):
             "size": prompt_data["size"],
             "quality": "high",
         },
-        headers=HEADERS,
+        headers=gateway_headers(),
         timeout=180,
     )
     resp.raise_for_status()
