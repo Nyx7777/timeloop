@@ -10,6 +10,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_pixel_art_render_settings()
+	_test_high_density_battle_assets()
 	await _test_state_sync_clears_preview_cache()
 	await _test_touch_input_maps_to_grid()
 
@@ -78,6 +79,23 @@ func _test_pixel_art_render_settings() -> void:
 		bool(ProjectSettings.get_setting("rendering/2d/snap/snap_2d_vertices_to_pixel")),
 		"2D vertices snap to whole pixels"
 	)
+
+
+func _test_high_density_battle_assets() -> void:
+	var expected_sizes := {
+		"res://assets/characters/player_idle.png": Vector2(192.0, 256.0),
+		"res://assets/characters/ghost_idle.png": Vector2(192.0, 256.0),
+		"res://assets/characters/guard_idle.png": Vector2(192.0, 256.0),
+		"res://assets/environment/lab_floor_tile.png": Vector2(256.0, 256.0),
+		"res://assets/environment/time_void_tile.png": Vector2(256.0, 256.0),
+		"res://assets/environment/lab_obstacle_server.png": Vector2(256.0, 320.0),
+		"res://assets/environment/lab_obstacle_pillar.png": Vector2(256.0, 320.0),
+	}
+	for path in expected_sizes:
+		var texture := load(path) as Texture2D
+		_expect(texture != null, "%s loads as a battle texture" % path)
+		if texture != null:
+			_expect_equal(texture.get_size(), expected_sizes[path], "%s keeps its high-density export size" % path)
 
 
 func _test_collision_course_screen(screen: BattleScreen) -> void:

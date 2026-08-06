@@ -4,9 +4,9 @@
 
 ## 运行时导出
 
-- `lab_floor_tile_alpha.png`：地砖透明源图；裁切透明边界后缩放为 `game/assets/environment/lab_floor_tile.png`（64×64）。
-- `lab_server_alpha.png`：服务器完整透明源图；战术压缩后底部对齐至 `game/assets/environment/lab_obstacle_server.png`（64×80 画布）。
-- `lab_pillar_alpha.png`：立柱完整透明源图；战术压缩后底部对齐至 `game/assets/environment/lab_obstacle_pillar.png`（64×80 画布）。
+- `lab_floor_tile_alpha.png`：地砖透明源图；裁切透明边界后缩放为 `game/assets/environment/lab_floor_tile.png`（256×256 高清密度）。
+- `lab_server_alpha.png`：服务器完整透明源图；战术压缩后底部对齐至 `game/assets/environment/lab_obstacle_server.png`（256×320 高清密度画布）。
+- `lab_pillar_alpha.png`：立柱完整透明源图；战术压缩后底部对齐至 `game/assets/environment/lab_obstacle_pillar.png`（256×320 高清密度画布）。
 - 运行时由 `BattleBoardView` 使用最近邻过滤绘制，点击判定、格子坐标和战术叠加层不依赖贴图尺寸。
 
 ## 当前候选规格
@@ -15,7 +15,7 @@
 - 地砖：浅冷灰实验室面板，低对比磨损，细钢蓝接缝，青色指示像素仅作微弱点缀。
 - 不可通行格：不使用抽象低墙；由服务器机柜、实验室立柱等实体设备承担阻挡语义。设备底部只占一个逻辑格，运行时高度约为 1.22 格，并按行从后向前绘制。
 - 设备变体：当前按格子坐标稳定交错服务器与立柱，只改变表现，不增加第二套关卡碰撞数据。
-- 完整透明源图保留设备原始比例，棋盘内部使用 64×80 战术压缩版；未来棋盘外围和非交互演出可重新导出完整高度版本。
+- 完整透明源图保留设备原始比例，棋盘内部使用 256×320 高清密度战术压缩版；未来棋盘外围和非交互演出可重新导出完整高度版本。
 - 信息层级：环境保持低饱和、低噪声，红橙敌人、紫色分身与青色移动范围必须优先可读。
 
 ## ImageGen 提示词

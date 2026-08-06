@@ -12,7 +12,7 @@ The `*_v2b_alpha.png` files are the selected compact/chibi sources. Despite the 
 ## Runtime export
 
 1. Remove the green background with the installed imagegen `remove_chroma_key.py` helper using border auto-key, soft matte, and despill.
-2. Run `tools/export_m42_runtime_assets.py --alpha-dir <rgba-dir> --output-root game/assets`. Character downscaling uses nearest-neighbor sampling to preserve hard pixel clusters.
-3. Validate that runtime drawing preserves the 48:64 source aspect ratio, snaps the sprite rectangle to integer pixels, and remains readable in 360×800, 390×844, and 430×932 battle captures.
+2. Run `tools/export_m42_runtime_assets.py --alpha-dir <rgba-dir> --environment-dir source_assets/environment/m42a --output-root game/assets`. Characters export to a 192×256 high-density canvas with nearest-neighbor sampling to preserve the source pixel clusters.
+3. Validate that runtime drawing preserves the 3:4 source aspect ratio, snaps the sprite rectangle to integer pixels, and remains readable in 360×800, 390×844, 430×932, and the user's actual window sizes.
 
 The generation script reads `TIMELOOP_IMAGE_GATEWAY_TOKEN` from the environment. Never store the token in this directory or in a local `.env` tracked by Git.

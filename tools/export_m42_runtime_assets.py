@@ -2,7 +2,8 @@
 
 The input directory must contain chroma-key-removed RGBA files produced by the
 installed imagegen ``remove_chroma_key.py`` helper. This script only performs
-deterministic cropping, downscaling, anchoring, and final alpha validation.
+deterministic cropping, high-density resizing, anchoring, and final alpha
+validation.
 """
 
 from __future__ import annotations
@@ -34,6 +35,12 @@ UI_EXPORTS = {
     "sequence_frame_inactive.png": ("ui/m42c/sequence_frame_inactive.png", (48, 48)),
 }
 
+CHARACTER_CANVAS = (192, 256)
+CHARACTER_SUBJECT_BOUNDS = (168, 232)
+CHARACTER_BASELINE_Y = 244
+BOARD_TILE_SIZE = (256, 256)
+OBSTACLE_CANVAS = (256, 320)
+
 
 def alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
     bbox = image.getchannel("A").getbbox()
@@ -60,19 +67,49 @@ def save_rgba(
 def export_character(source: Path, destination: Path) -> None:
     image = Image.open(source).convert("RGBA")
     subject = image.crop(alpha_bbox(image))
-    scale = min(42 / subject.width, 58 / subject.height)
+    scale = min(
+        CHARACTER_SUBJECT_BOUNDS[0] / subject.width,
+        CHARACTER_SUBJECT_BOUNDS[1] / subject.height,
+    )
     size = (
         max(1, round(subject.width * scale)),
         max(1, round(subject.height * scale)),
     )
-    # Character sources already use deliberate pixel clusters. A smoothing
-    # filter blends those clusters into soft edges at 48x64, while nearest
-    # sampling keeps the runtime sprite consistent with the crisp board art.
+    # Keep four texture pixels for every former runtime pixel. The generated
+    # sources already contain deliberate pixel clusters; nearest sampling
+    # preserves those clusters without collapsing the character to 48x64.
     subject = subject.resize(size, Image.Resampling.NEAREST)
-    canvas = Image.new("RGBA", (48, 64), (0, 0, 0, 0))
+    canvas = Image.new("RGBA", CHARACTER_CANVAS, (0, 0, 0, 0))
     x = (canvas.width - subject.width) // 2
-    y = 61 - subject.height
+    y = CHARACTER_BASELINE_Y - subject.height
     canvas.alpha_composite(subject, (x, y))
+    save_rgba(canvas, destination)
+
+
+def export_floor(source: Path, destination: Path) -> None:
+    image = Image.open(source).convert("RGBA")
+    subject = image.crop(alpha_bbox(image))
+    resized = subject.resize(BOARD_TILE_SIZE, Image.Resampling.LANCZOS)
+    save_rgba(resized, destination, require_transparent_corner=False)
+
+
+def export_obstacle(source: Path, destination: Path) -> None:
+    image = Image.open(source).convert("RGBA")
+    subject = image.crop(alpha_bbox(image))
+    inset = 8
+    scale = min(
+        (OBSTACLE_CANVAS[0] - inset * 2) / subject.width,
+        (OBSTACLE_CANVAS[1] - inset) / subject.height,
+    )
+    resized = subject.resize(
+        (max(1, round(subject.width * scale)), max(1, round(subject.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    canvas = Image.new("RGBA", OBSTACLE_CANVAS, (0, 0, 0, 0))
+    canvas.alpha_composite(
+        resized,
+        ((canvas.width - resized.width) // 2, canvas.height - resized.height),
+    )
     save_rgba(canvas, destination)
 
 
@@ -104,6 +141,7 @@ def export_stretched(source: Path, destination: Path, size: tuple[int, int]) -> 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha-dir", type=Path, required=True)
+    parser.add_argument("--environment-dir", type=Path)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
@@ -116,10 +154,21 @@ def main() -> None:
     export_contained(
         args.alpha_dir / "time_void_tile_alpha.png",
         void_destination,
-        (64, 64),
-        inset=1,
+        BOARD_TILE_SIZE,
+        inset=4,
     )
     print(f"EXPORTED {void_destination}")
+
+    if args.environment_dir is not None:
+        environment_exports = {
+            "lab_floor_tile_alpha.png": ("environment/lab_floor_tile.png", export_floor),
+            "lab_server_alpha.png": ("environment/lab_obstacle_server.png", export_obstacle),
+            "lab_pillar_alpha.png": ("environment/lab_obstacle_pillar.png", export_obstacle),
+        }
+        for source_name, (destination_name, exporter) in environment_exports.items():
+            destination = args.output_root / destination_name
+            exporter(args.environment_dir / source_name, destination)
+            print(f"EXPORTED {destination}")
 
     for source_name, (destination_name, size) in UI_EXPORTS.items():
         destination = args.output_root / destination_name
