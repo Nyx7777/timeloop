@@ -13,8 +13,16 @@ func _run() -> void:
 		return
 
 	var output_path := String(args[0]).replace("\\", "/")
+	var capture_size := Vector2i(390, 844)
+	if args.size() > 1:
+		var size_parts := String(args[1]).to_lower().split("x", false)
+		if size_parts.size() != 2:
+			push_error("Invalid capture size: %s" % args[1])
+			quit(1)
+			return
+		capture_size = Vector2i(int(size_parts[0]), int(size_parts[1]))
 	DirAccess.make_dir_recursive_absolute(output_path.get_base_dir())
-	root.size = Vector2i(390, 844)
+	root.size = capture_size
 
 	var packed_scene := load("res://presentation/battle/battle_screen.tscn") as PackedScene
 	if packed_scene == null:
@@ -41,7 +49,7 @@ func _run() -> void:
 		push_error("Unable to save %s: %s" % [output_path, error_string(error)])
 		quit(1)
 		return
-	print("CAPTURED %s (390x844)" % output_path)
+	print("CAPTURED %s (%dx%d)" % [output_path, capture_size.x, capture_size.y])
 	screen.queue_free()
 	await process_frame
 	quit(0)

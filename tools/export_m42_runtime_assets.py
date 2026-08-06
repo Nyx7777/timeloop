@@ -11,12 +11,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 
 CHARACTER_EXPORTS = {
     "player_v2b_alpha.png": "characters/player_idle.png",
-    "ghost_v2b_alpha.png": "characters/ghost_idle.png",
     "enemy_researcher_v2b_alpha.png": "characters/guard_idle.png",
     "enemy_subject_v2b_alpha.png": "characters/enemy_subject_idle.png",
 }
@@ -64,7 +63,7 @@ def save_rgba(
         raise ValueError(f"{destination} does not have a transparent corner")
 
 
-def export_character(source: Path, destination: Path) -> None:
+def character_canvas(source: Path) -> Image.Image:
     image = Image.open(source).convert("RGBA")
     subject = image.crop(alpha_bbox(image))
     scale = min(
@@ -83,7 +82,38 @@ def export_character(source: Path, destination: Path) -> None:
     x = (canvas.width - subject.width) // 2
     y = CHARACTER_BASELINE_Y - subject.height
     canvas.alpha_composite(subject, (x, y))
-    save_rgba(canvas, destination)
+    return canvas
+
+
+def ghost_projection(image: Image.Image) -> Image.Image:
+    image = image.convert("RGBA")
+    alpha = image.getchannel("A")
+    grayscale = ImageOps.grayscale(image.convert("RGB"))
+    violet = ImageOps.colorize(
+        grayscale,
+        black="#25084f",
+        mid="#9450df",
+        white="#f3d5ff",
+    ).convert("RGBA")
+    violet.putalpha(alpha)
+
+    outline_radius = max(1, round(min(image.size) / 128))
+    expanded_alpha = alpha.filter(ImageFilter.MaxFilter(outline_radius * 2 + 1))
+    outline_alpha = ImageChops.subtract(expanded_alpha, alpha).point(lambda value: min(224, value))
+    outline = Image.new("RGBA", image.size, (211, 105, 255, 0))
+    outline.putalpha(outline_alpha)
+    result = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    result.alpha_composite(outline)
+    result.alpha_composite(violet)
+    return result
+
+
+def export_character(source: Path, destination: Path) -> None:
+    save_rgba(character_canvas(source), destination)
+
+
+def export_ghost(source: Path, destination: Path) -> None:
+    save_rgba(ghost_projection(character_canvas(source)), destination)
 
 
 def export_floor(source: Path, destination: Path) -> None:
@@ -142,6 +172,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha-dir", type=Path, required=True)
     parser.add_argument("--environment-dir", type=Path)
+    parser.add_argument("--derived-source-dir", type=Path)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
@@ -149,6 +180,17 @@ def main() -> None:
         destination = args.output_root / destination_name
         export_character(args.alpha_dir / source_name, destination)
         print(f"EXPORTED {destination}")
+
+    player_source = args.alpha_dir / "player_v2b_alpha.png"
+    ghost_destination = args.output_root / "characters/ghost_idle.png"
+    export_ghost(player_source, ghost_destination)
+    print(f"EXPORTED {ghost_destination} FROM {player_source.name}")
+
+    if args.derived_source_dir is not None:
+        derived_ghost = args.derived_source_dir / "ghost_v2c_alpha.png"
+        player_image = Image.open(player_source).convert("RGBA")
+        save_rgba(ghost_projection(player_image), derived_ghost)
+        print(f"EXPORTED {derived_ghost} FROM {player_source.name}")
 
     void_destination = args.output_root / "environment/time_void_tile.png"
     export_contained(

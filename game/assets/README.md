@@ -2,21 +2,23 @@
 
 Only Godot runtime-ready art, UI, audio, and font exports belong here. Editable source files stay in the repository-level `source_assets` directory once that pipeline is needed.
 
+详细密度、同角色变体、导入缓存和验收规则见 `时间循环玩法/战场美术素材规范.md`。
+
 ## Environment
 
-- `environment/lab_floor_tile.png`：M4.2A 明亮实验室单格地砖，64×64。
-- `environment/lab_obstacle_server.png`：M4.2A 单格服务器机柜，64×80 战术压缩版画布、底部锚定。
-- `environment/lab_obstacle_pillar.png`：M4.2A 单格实验室立柱，64×80 战术压缩版画布、底部锚定。
-- `environment/time_void_tile.png`：M4.2B 时间空洞单格素材，64×64，不越界；紫色旋涡完整限制在逻辑格内。
+- `environment/lab_floor_tile.png`：M4.2A 明亮实验室单格地砖，256×256 高清密度。
+- `environment/lab_obstacle_server.png`：M4.2A 单格服务器机柜，256×320 高清密度战术压缩版画布、底部锚定。
+- `environment/lab_obstacle_pillar.png`：M4.2A 单格实验室立柱，256×320 高清密度战术压缩版画布、底部锚定。
+- `environment/time_void_tile.png`：M4.2B 时间空洞单格素材，256×256，不越界；紫色旋涡完整限制在逻辑格内。
 - 对应透明源图、候选规格和 ImageGen 提示词位于 `source_assets/environment/m42a/`。
 
 ## Characters
 
-- `characters/player_idle.png`：M4.2B v2 本体静态战斗基准；青发、白色实验对象囚服、无武装，48×64、底部居中锚定。
-- `characters/ghost_idle.png`：M4.2B v2 分身静态战斗基准，沿用本体轮廓并使用紫色时间投影语言，48×64。
-- `characters/guard_idle.png`：当前六关普通敌人的运行时显示；采用红橙裂隙的时间错位研究员，48×64。
-- `characters/enemy_subject_idle.png`：失败实验体候选，48×64；保留给未来独立敌人类型，当前六关不加载。
-- 三类角色在棋盘内按约 1.18 格画布高绘制，始终保持 48:64 原始宽高比，不允许用独立宽/高常量拉伸；所属格由格内扁椭圆脚底环和底部 HP 条辅助辨认。
+- `characters/player_idle.png`：M4.2B v2 本体静态战斗基准；青发、白色实验对象囚服、无武装，192×256、底部居中锚定。
+- `characters/ghost_idle.png`：从本体透明母版逐像素派生的紫色时间投影，192×256；禁止使用独立人物图重新生成。
+- `characters/guard_idle.png`：当前六关普通敌人的运行时显示；采用红橙裂隙的时间错位研究员，192×256。
+- `characters/enemy_subject_idle.png`：失败实验体候选，192×256；保留给未来独立敌人类型，当前六关不加载。
+- 三类角色在棋盘内按约 1.18 格画布高绘制，始终保持 3:4 原始宽高比，不允许用独立宽/高常量拉伸；所属格由格内扁椭圆脚底环和底部 HP 条辅助辨认。
 - 角色从高分辨率像素源缩小时使用最近邻硬采样；UI 和环境仍可按各自用途使用平滑缩放。运行时继续使用最近邻过滤并将角色绘制矩形对齐到整数像素。
 - 第一版候选位于 `source_assets/characters/m42b/`；当前 v2 绿幕源图和提示词位于 `source_assets/characters/m42b_v2/`。
 
@@ -31,5 +33,5 @@ Only Godot runtime-ready art, UI, audio, and font exports belong here. Editable 
 
 ## Export pipeline
 
-- 绿幕源图先使用已安装 imagegen 技能的 `remove_chroma_key.py` 转为 RGBA，再运行 `tools/export_m42_runtime_assets.py` 统一裁切、缩放、底部锚定并验证透明通道；角色导出固定使用最近邻硬采样。
+- 绿幕源图先使用已安装 imagegen 技能的 `remove_chroma_key.py` 转为 RGBA，再运行 `tools/export_m42_runtime_assets.py` 统一裁切、缩放、底部锚定并验证透明通道；角色导出固定使用最近邻硬采样，分身固定由本体透明图派生。
 - 生成脚本只从环境变量 `TIMELOOP_IMAGE_GATEWAY_TOKEN` 读取图片网关凭据；不得把密钥写回仓库。
