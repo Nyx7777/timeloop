@@ -19,6 +19,17 @@ func _run() -> void:
 		return
 	var output_dir := String(args[0]).replace("\\", "/").trim_suffix("/")
 	var level_index := int(args[1]) if args.size() > 1 else 0
+	var capture_cases: Array = CASES.duplicate(true)
+	if args.size() > 2:
+		capture_cases.clear()
+		for size_text in String(args[2]).split(",", false):
+			var parts := size_text.to_lower().split("x", false)
+			if parts.size() != 2:
+				push_error("Invalid capture size: %s" % size_text)
+				quit(1)
+				return
+			var capture_size := Vector2i(int(parts[0]), int(parts[1]))
+			capture_cases.append({"name": "custom_%dx%d.png" % [capture_size.x, capture_size.y], "size": capture_size})
 	DirAccess.make_dir_recursive_absolute(output_dir)
 
 	var packed_scene := load("res://presentation/battle/battle_screen.tscn") as PackedScene
@@ -27,7 +38,7 @@ func _run() -> void:
 		quit(1)
 		return
 
-	for layout_case in CASES:
+	for layout_case in capture_cases:
 		root.size = layout_case.size
 		var screen := packed_scene.instantiate() as BattleScreen
 		root.add_child(screen)

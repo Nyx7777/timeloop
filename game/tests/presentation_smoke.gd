@@ -9,6 +9,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_test_pixel_art_render_settings()
 	await _test_state_sync_clears_preview_cache()
 	await _test_touch_input_maps_to_grid()
 
@@ -61,6 +62,22 @@ func _run() -> void:
 	screen.queue_free()
 	await process_frame
 	_finish()
+
+
+func _test_pixel_art_render_settings() -> void:
+	_expect_equal(
+		ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter"),
+		0,
+		"canvas textures use nearest-neighbor filtering"
+	)
+	_expect(
+		bool(ProjectSettings.get_setting("rendering/2d/snap/snap_2d_transforms_to_pixel")),
+		"2D transforms snap to whole pixels"
+	)
+	_expect(
+		bool(ProjectSettings.get_setting("rendering/2d/snap/snap_2d_vertices_to_pixel")),
+		"2D vertices snap to whole pixels"
+	)
 
 
 func _test_collision_course_screen(screen: BattleScreen) -> void:
