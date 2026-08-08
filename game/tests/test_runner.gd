@@ -20,6 +20,9 @@ func _init() -> void:
 	_test_collision_can_defeat_both_enemies()
 	_test_ghost_replays_fixed_knockback_direction()
 	_test_ghost_replays_collision_against_current_unit()
+	_test_matching_ghost_displacement_preserves_fixed_history()
+	_test_multiple_ghost_displacements_preserve_fixed_history()
+	_test_divergent_ghost_replay_disturbs_enemy()
 	_test_fixed_history_collision_pushes_player()
 	_test_fixed_history_collision_into_hole_ends_timeline()
 	_test_disturbance_wakes_enemy_next_turn()
@@ -344,6 +347,77 @@ func _test_ghost_replays_collision_against_current_unit() -> void:
 	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 2), "ghost collision keeps the pushed enemy in place")
 
 
+func _test_matching_ghost_displacement_preserves_fixed_history() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.phase = BattlePhase.TIMELINE_TRANSITION
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(1, 1), Vector2i(2, 1))]
+	state.timeline_recordings = [{
+		"timeline_index": 1,
+		"end_turn": 1,
+		"end_reason": &"death",
+		"actions": [_recorded_attack(Vector2i(1, 3), Vector2i(1, 2), Vector2i.UP)],
+	}]
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.start_next_timeline())
+
+	_expect(result.accepted, "T2 starts with a matching recorded displacement")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 1), "T1 ghost reconstructs the fixed enemy starting position")
+	_expect(not _has_event(result, &"enemy_disturbed"), "matching T1 displacement does not disturb the enemy in T2")
+	_expect_equal(int(session.state.get_unit(&"guard").statuses.get("awake_from_turn", 0)), 0, "matching historical replay keeps the enemy fixed")
+	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "matching historical replay preserves the locked intent")
+
+
+func _test_multiple_ghost_displacements_preserve_fixed_history() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.timeline_index = 2
+	state.phase = BattlePhase.TIMELINE_TRANSITION
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(0, 1), Vector2i(0, 2))]
+	state.timeline_recordings = [
+		{
+			"timeline_index": 1,
+			"end_turn": 1,
+			"end_reason": &"death",
+			"actions": [_recorded_attack(Vector2i(1, 3), Vector2i(1, 2), Vector2i.UP)],
+		},
+		{
+			"timeline_index": 2,
+			"end_turn": 1,
+			"end_reason": &"crystallized",
+			"actions": [_recorded_attack(Vector2i(2, 1), Vector2i(1, 1), Vector2i.LEFT)],
+		},
+	]
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.start_next_timeline())
+
+	_expect(result.accepted, "T3 starts with two recorded displacements")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(0, 1), "multiple ghosts collectively reconstruct the fixed starting position")
+	_expect(not _has_event(result, &"enemy_disturbed"), "intermediate ghost positions do not cause false disturbance")
+	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "collective historical reconstruction keeps the enemy fixed")
+
+
+func _test_divergent_ghost_replay_disturbs_enemy() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.phase = BattlePhase.TIMELINE_TRANSITION
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(2, 1), Vector2i(2, 2))]
+	state.timeline_recordings = [{
+		"timeline_index": 1,
+		"end_turn": 1,
+		"end_reason": &"death",
+		"actions": [_recorded_attack(Vector2i(1, 3), Vector2i(1, 2), Vector2i.UP)],
+	}]
+	var session := BattleSession.new(state)
+	var result := session.submit(BattleCommand.start_next_timeline())
+	var disturbed := _find_event(result, &"enemy_disturbed")
+
+	_expect(result.accepted, "T2 starts even when ghost replay diverges from fixed history")
+	_expect(disturbed != null, "ghost replay that misses the fixed starting state marks disturbance")
+	_expect_equal(disturbed.payload.get("reason", &""), &"history_diverged", "replay divergence reports a stable disturbance reason")
+	_expect_equal(disturbed.payload.get("expected_position", Vector2i.ZERO), Vector2i(2, 1), "divergence reports the fixed starting position")
+	_expect_equal(disturbed.payload.get("actual_position", Vector2i.ZERO), Vector2i(1, 1), "divergence reports the reconstructed actual position")
+	_expect_equal(session.state.get_unit(&"guard").statuses.awake_from_turn, 2, "divergent ghost replay wakes the enemy next turn")
+	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "divergence does not rewrite the current locked intent")
+
+
 func _test_fixed_history_collision_pushes_player() -> void:
 	var state := _create_micro_state(Vector2i(1, 2), Vector2i(1, 1))
 	state.timeline_index = 2
@@ -375,6 +449,7 @@ func _test_disturbance_wakes_enemy_next_turn() -> void:
 	var session := BattleSession.new(state)
 	var attack := session.submit(BattleCommand.attack(&"player", Vector2i(1, 2)))
 	_expect(_has_event(attack, &"enemy_disturbed"), "pushing fixed enemy marks disturbance")
+	_expect_equal(_find_event(attack, &"enemy_disturbed").payload.get("reason", &""), &"direct_interference", "current player displacement reports direct interference")
 	_expect_equal(session.state.get_unit(&"guard").statuses.awake_from_turn, 2, "disturbance starts on next turn")
 	var first_end := session.submit(BattleCommand.end_turn(&"player"))
 	_expect(_has_event(first_end, &"action_invalidated"), "current locked action fails after enemy leaves historical origin")
@@ -400,8 +475,8 @@ func _test_awake_state_resets_on_next_timeline() -> void:
 	_expect(bool(session.state.locked_enemy_intents[0].reactive), "enemy is awake only inside the disturbed timeline")
 	session.submit(BattleCommand.end_turn(&"player"))
 	# Isolate timeline-state inheritance from a fresh displacement replayed by the
-	# new ghost. If the attack recording remained, T3 would correctly disturb the
-	# enemy again when that ghost pushes it.
+	# new ghost. If the attack recording remained, T3 reconstruction would end
+	# away from the rewritten fixed starting position and correctly disturb again.
 	session.state.current_recording.clear()
 	_expect(session.submit(BattleCommand.crystallize(&"player")).accepted, "disturbed timeline can be committed after recording awake behavior")
 	_expect(session.submit(BattleCommand.start_next_timeline()).accepted, "next timeline starts after disturbed history is committed")

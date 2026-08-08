@@ -237,6 +237,7 @@ func _execute_ghost_actions(state: BattleState, events: Array[BattleEvent]) -> v
 				_execute_ghost_attack(state, ghost_id, timeline_number, action, events)
 				if state.phase == BattlePhase.BATTLE_OVER or state.phase == BattlePhase.TIMELINE_TRANSITION:
 					return
+	_mark_enemy_history_divergence_after_ghosts(state, events)
 
 
 func _execute_ghost_attack(state: BattleState, ghost_id: StringName, timeline_number: int, action: RecordedAction, events: Array[BattleEvent]) -> void:
@@ -262,7 +263,7 @@ func _execute_ghost_attack(state: BattleState, ghost_id: StringName, timeline_nu
 	_apply_damage(state, target, damage, ghost_id, events)
 	if target.active and _is_push_enabled(state):
 		var push_direction: Vector2i = action.result.get("push_direction", action.target - action.origin)
-		_apply_knockback(state, target, push_direction, ghost_id, events)
+		_apply_knockback(state, target, push_direction, ghost_id, events, false)
 	if target.team == &"enemy" and _all_enemies_defeated(state):
 		_mark_victory(state, events)
 	elif target.unit_id == state.player_id and not target.active:
@@ -528,7 +529,14 @@ func _new_recorded_action(state: BattleState, actor_id: StringName, action_type:
 	return action
 
 
-func _apply_knockback(state: BattleState, target: UnitState, direction: Vector2i, source_id: StringName, events: Array[BattleEvent]) -> Dictionary:
+func _apply_knockback(
+	state: BattleState,
+	target: UnitState,
+	direction: Vector2i,
+	source_id: StringName,
+	events: Array[BattleEvent],
+	disturb_immediately := true
+) -> Dictionary:
 	var result: Dictionary = DisplacementQueryScript.evaluate_knockback(state, target, direction)
 	var origin: Vector2i = result.from
 	var destination: Vector2i = result.to
@@ -585,12 +593,41 @@ func _apply_knockback(state: BattleState, target: UnitState, direction: Vector2i
 		"source_id": source_id,
 		"outcome": &"moved",
 	}))
-	if target.team == &"enemy":
+	if target.team == &"enemy" and disturb_immediately:
 		_mark_enemy_disturbed(state, target, events)
 	return result
 
 
-func _mark_enemy_disturbed(state: BattleState, enemy: UnitState, events: Array[BattleEvent]) -> void:
+func _mark_enemy_history_divergence_after_ghosts(state: BattleState, events: Array[BattleEvent]) -> void:
+	if state.timeline_index <= 1 or not state.enemy_history.has(state.turn_index):
+		return
+	for unit_id in state.unit_order:
+		var enemy := state.get_unit(unit_id)
+		if enemy == null or not enemy.active or enemy.team != &"enemy":
+			continue
+		if _is_enemy_awake(enemy, state.turn_index):
+			continue
+		var fixed_intent := _find_intent_for_enemy(state.locked_enemy_intents, enemy.unit_id)
+		if fixed_intent.is_empty():
+			_mark_enemy_disturbed(state, enemy, events, &"missing_fixed_intent", {
+				"actual_position": enemy.position,
+			})
+			continue
+		var expected_position: Vector2i = fixed_intent.get("from", enemy.position)
+		if enemy.position != expected_position:
+			_mark_enemy_disturbed(state, enemy, events, &"history_diverged", {
+				"expected_position": expected_position,
+				"actual_position": enemy.position,
+			})
+
+
+func _mark_enemy_disturbed(
+	state: BattleState,
+	enemy: UnitState,
+	events: Array[BattleEvent],
+	reason: StringName = &"direct_interference",
+	details: Dictionary = {}
+) -> void:
 	if state.timeline_index <= 1 or not state.enemy_history.has(state.turn_index):
 		return
 	var wake_turn := state.turn_index + 1
@@ -599,9 +636,13 @@ func _mark_enemy_disturbed(state: BattleState, enemy: UnitState, events: Array[B
 		wake_turn = mini(wake_turn, existing)
 	enemy.statuses["awake_from_turn"] = wake_turn
 	enemy.statuses["disturbed"] = true
-	events.append(BattleEvent.create(&"enemy_disturbed", enemy.unit_id, {
+	var payload := {
 		"wake_turn": wake_turn,
-	}))
+		"reason": reason,
+	}
+	for key in details.keys():
+		payload[key] = details[key]
+	events.append(BattleEvent.create(&"enemy_disturbed", enemy.unit_id, payload))
 
 
 func _apply_history_collision(state: BattleState, player: UnitState, intent: Dictionary, enemy_id: StringName, events: Array[BattleEvent]) -> void:
