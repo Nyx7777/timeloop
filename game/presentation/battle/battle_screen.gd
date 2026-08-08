@@ -10,6 +10,13 @@ const BUTTON_MOVE_TEXTURE := preload("res://assets/ui/m42c/button_move_9patch.pn
 const BUTTON_ATTACK_TEXTURE := preload("res://assets/ui/m42c/button_attack_9patch.png")
 const BUTTON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m42c/button_crystallize_9patch.png")
 const BUTTON_END_TURN_TEXTURE := preload("res://assets/ui/m42c/button_endturn_9patch.png")
+const ICON_MOVE_TEXTURE := preload("res://assets/ui/m50a/icon_move.png")
+const ICON_ATTACK_TEXTURE := preload("res://assets/ui/m50a/icon_attack.png")
+const ICON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/icon_crystallize.png")
+const ICON_END_TURN_TEXTURE := preload("res://assets/ui/m50a/icon_end_turn.png")
+const ICON_FIXED_TEXTURE := preload("res://assets/ui/m50a/icon_fixed.png")
+const ICON_AWAKE_TEXTURE := preload("res://assets/ui/m50a/icon_awake.png")
+const ICON_LOCK_TEXTURE := preload("res://assets/ui/m50a/icon_lock.png")
 const SEQUENCE_ACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_active.png")
 const SEQUENCE_INACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_inactive.png")
 const PLAYER_PORTRAIT_TEXTURE := preload("res://assets/characters/player_idle.png")
@@ -44,6 +51,8 @@ var _round_label: Label
 var _time_label: Label
 var _fixed_label: Label
 var _awake_label: Label
+var _fixed_icon: TextureRect
+var _awake_icon: TextureRect
 var _sequence_row: HBoxContainer
 
 var _mission_label: Label
@@ -62,6 +71,9 @@ var _restart_button: Button
 var _speed_option: OptionButton
 var _log: RichTextLabel
 var _debug_overlay: Control
+var _move_focus_ring: Panel
+var _tutorial_focus_phase := 0.0
+var _boss_build_review: Control
 
 var _busy := false
 var _action_mode: StringName = &"smart"
@@ -72,6 +84,13 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_build_interface()
 	_start_battle()
+
+
+func _process(delta: float) -> void:
+	if _move_focus_ring == null or not _move_focus_ring.visible:
+		return
+	_tutorial_focus_phase = fmod(_tutorial_focus_phase + delta * 3.6, TAU)
+	_move_focus_ring.modulate.a = 0.68 + sin(_tutorial_focus_phase) * 0.28
 
 
 func _build_interface() -> void:
@@ -141,12 +160,16 @@ func _build_top_hud(parent: VBoxContainer) -> void:
 	center.add_child(_time_label)
 	row.add_child(_status_cell(center, Color("#25203f"), Color("#615185"), 76.0, true))
 
-	_fixed_label = _hud_label("固定 0", COLOR_FIXED, HORIZONTAL_ALIGNMENT_CENTER, 14)
-	row.add_child(_status_cell(_fixed_label, Color("#4b2116"), COLOR_FIXED, 72.0))
+	_fixed_label = _hud_label("固定 0", COLOR_FIXED, HORIZONTAL_ALIGNMENT_CENTER, 13)
+	var fixed_content := _icon_status_content(ICON_FIXED_TEXTURE, _fixed_label)
+	_fixed_icon = fixed_content.get_node("Icon") as TextureRect
+	row.add_child(_status_cell(fixed_content, Color("#4b2116"), COLOR_FIXED, 72.0))
 
-	_awake_label = _hud_label("清醒 0", COLOR_GOLD, HORIZONTAL_ALIGNMENT_CENTER, 14)
+	_awake_label = _hud_label("清醒 0", COLOR_GOLD, HORIZONTAL_ALIGNMENT_CENTER, 13)
 	_awake_label.tooltip_text = "仅在当前时间线实时决策；进入下一条时间线后，新行为重新成为固定历史。"
-	row.add_child(_status_cell(_awake_label, Color("#463715"), COLOR_GOLD, 72.0))
+	var awake_content := _icon_status_content(ICON_AWAKE_TEXTURE, _awake_label)
+	_awake_icon = awake_content.get_node("Icon") as TextureRect
+	row.add_child(_status_cell(awake_content, Color("#463715"), COLOR_GOLD, 72.0))
 
 	var debug_button := Button.new()
 	debug_button.text = "≡"
@@ -172,7 +195,7 @@ func _build_sequence_bar(parent: VBoxContainer) -> void:
 	var center := CenterContainer.new()
 	panel.add_child(center)
 	_sequence_row = HBoxContainer.new()
-	_sequence_row.add_theme_constant_override("separation", 5)
+	_sequence_row.add_theme_constant_override("separation", 4)
 	center.add_child(_sequence_row)
 
 
@@ -189,6 +212,84 @@ func _build_board(parent: VBoxContainer) -> void:
 	_board.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_board.cell_clicked.connect(_on_board_cell_clicked)
 	board_panel.add_child(_board)
+	_build_boss_build_review(board_panel)
+
+
+func _build_boss_build_review(parent: Control) -> void:
+	_boss_build_review = Control.new()
+	_boss_build_review.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_boss_build_review.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_build_review.visible = false
+	parent.add_child(_boss_build_review)
+
+	var banner := PanelContainer.new()
+	banner.anchor_left = 0.0
+	banner.anchor_top = 0.0
+	banner.anchor_right = 1.0
+	banner.anchor_bottom = 0.0
+	banner.offset_left = 6.0
+	banner.offset_top = 6.0
+	banner.offset_right = -6.0
+	banner.offset_bottom = 66.0
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.add_theme_stylebox_override("panel", _panel_style(Color("#0b1020e8"), COLOR_RED.darkened(0.15), 2, 7, 5))
+	_boss_build_review.add_child(banner)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	banner.add_child(row)
+
+	var portrait := TextureRect.new()
+	portrait.texture = _upper_body_portrait(ENEMY_PORTRAIT_TEXTURE)
+	portrait.custom_minimum_size = Vector2(42.0, 48.0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	row.add_child(portrait)
+
+	var boss_info := VBoxContainer.new()
+	boss_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	boss_info.add_theme_constant_override("separation", 2)
+	row.add_child(boss_info)
+
+	var boss_name := Label.new()
+	boss_name.text = "裂隙监理者 · 阶段 2"
+	boss_name.add_theme_font_size_override("font_size", 12)
+	boss_name.add_theme_color_override("font_color", Color("#ffd6dc"))
+	boss_info.add_child(boss_name)
+
+	var hp_row := HBoxContainer.new()
+	hp_row.add_theme_constant_override("separation", 2)
+	boss_info.add_child(hp_row)
+	for segment_index in range(8):
+		var segment := Panel.new()
+		segment.custom_minimum_size = Vector2(11.0, 8.0)
+		var segment_color := COLOR_RED if segment_index < 6 else Color("#39253a")
+		segment.add_theme_stylebox_override("panel", _panel_style(segment_color, Color("#ff9ca4"), 1, 2, 0))
+		hp_row.add_child(segment)
+
+	var boss_states := HBoxContainer.new()
+	boss_states.add_theme_constant_override("separation", 3)
+	boss_info.add_child(boss_states)
+	boss_states.add_child(_compact_icon(ICON_FIXED_TEXTURE, 18.0, "行为固定"))
+	boss_states.add_child(_compact_icon(ICON_AWAKE_TEXTURE, 18.0, "受扰后下回合清醒"))
+
+	var build_info := VBoxContainer.new()
+	build_info.alignment = BoxContainer.ALIGNMENT_CENTER
+	build_info.add_theme_constant_override("separation", 1)
+	row.add_child(build_info)
+	var build_label := Label.new()
+	build_label.text = "BUILD 3"
+	build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	build_label.add_theme_font_size_override("font_size", 9)
+	build_label.add_theme_color_override("font_color", COLOR_CYAN)
+	build_info.add_child(build_label)
+	var build_row := HBoxContainer.new()
+	build_row.add_theme_constant_override("separation", 2)
+	build_info.add_child(build_row)
+	build_row.add_child(_compact_icon(ICON_MOVE_TEXTURE, 20.0, "位移增幅"))
+	build_row.add_child(_compact_icon(ICON_CRYSTALLIZE_TEXTURE, 20.0, "固化返还"))
+	build_row.add_child(_compact_icon(ICON_AWAKE_TEXTURE, 20.0, "扰动观测"))
 
 
 func _build_action_area(parent: VBoxContainer) -> void:
@@ -221,21 +322,22 @@ func _build_action_area(parent: VBoxContainer) -> void:
 	actions.add_theme_constant_override("separation", 6)
 	content.add_child(actions)
 
-	_move_button = _action_button("↕\n移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE)
+	_move_button = _action_button("移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE, ICON_MOVE_TEXTURE)
+	_move_focus_ring = _move_button.get_node("FocusRing") as Panel
 	_move_button.toggle_mode = true
 	_move_button.pressed.connect(_on_move_pressed)
 	actions.add_child(_move_button)
 
-	_attack_button = _action_button("⚔\n攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE)
+	_attack_button = _action_button("攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE, ICON_ATTACK_TEXTURE)
 	_attack_button.toggle_mode = true
 	_attack_button.pressed.connect(_on_attack_pressed)
 	actions.add_child(_attack_button)
 
-	_crystallize_button = _action_button("◆\n固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE)
+	_crystallize_button = _action_button("固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE, ICON_CRYSTALLIZE_TEXTURE)
 	_crystallize_button.pressed.connect(_on_crystallize_pressed)
 	actions.add_child(_crystallize_button)
 
-	_end_turn_button = _action_button("⌛\n结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE)
+	_end_turn_button = _action_button("结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE, ICON_END_TURN_TEXTURE)
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	actions.add_child(_end_turn_button)
 
@@ -518,6 +620,10 @@ func set_action_mode_for_test(mode: StringName) -> void:
 	_refresh_interface()
 
 
+func set_boss_build_review_for_test(enabled: bool) -> void:
+	_boss_build_review.visible = enabled
+
+
 func get_state_snapshot_for_test() -> Dictionary:
 	return _session.state.to_dict()
 
@@ -564,6 +670,15 @@ func get_ui_snapshot_for_test() -> Dictionary:
 		"attack_disabled": _attack_button.disabled,
 		"move_selected": _move_button.button_pressed,
 		"attack_selected": _attack_button.button_pressed,
+		"tutorial_focus_target": "move" if _move_focus_ring.visible else "",
+		"tutorial_other_actions_dimmed": _attack_button.modulate.a < 0.8,
+		"action_icons": {
+			"move": _action_button_icon_path(_move_button),
+			"attack": _action_button_icon_path(_attack_button),
+			"crystallize": _action_button_icon_path(_crystallize_button),
+			"end_turn": _action_button_icon_path(_end_turn_button),
+		},
+		"boss_build_review_visible": _boss_build_review.visible,
 		"busy": _busy,
 	}
 
@@ -583,6 +698,8 @@ func _refresh_interface() -> void:
 	_awake_label.text = "清醒 %d" % int(temporal_counts.awake)
 	_fixed_label.modulate = Color.WHITE if int(temporal_counts.fixed) > 0 else Color(1.0, 1.0, 1.0, 0.48)
 	_awake_label.modulate = Color.WHITE if int(temporal_counts.awake) > 0 else Color(1.0, 1.0, 1.0, 0.48)
+	_fixed_icon.modulate = _fixed_label.modulate
+	_awake_icon.modulate = _awake_label.modulate
 	_refresh_sequence_bar(state)
 
 	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
@@ -602,13 +719,14 @@ func _refresh_interface() -> void:
 	_crystallize_button.visible = true
 	_crystallize_button.disabled = not player_input or not bool(state.rules.get("crystallize_enabled", false)) or state.lives_left <= 1
 	if not bool(state.rules.get("crystallize_enabled", false)):
-		_crystallize_button.text = "锁定\n固化"
+		_set_action_button_content(_crystallize_button, "固化\n锁定", ICON_LOCK_TEXTURE)
 	elif state.lives_left <= 1:
-		_crystallize_button.text = "末命\n固化"
+		_set_action_button_content(_crystallize_button, "固化\n末命", ICON_CRYSTALLIZE_TEXTURE)
 	else:
-		_crystallize_button.text = "◆\n固化"
+		_set_action_button_content(_crystallize_button, "固化", ICON_CRYSTALLIZE_TEXTURE)
 	_move_button.button_pressed = _action_mode == &"move" and not _move_button.disabled
 	_attack_button.button_pressed = _action_mode == &"attack" and not _attack_button.disabled
+	_refresh_tutorial_focus(state, player, player_input)
 
 	var visible_reachable: Array[Vector2i] = []
 	var visible_attackable: Array[Vector2i] = []
@@ -637,6 +755,8 @@ func _refresh_interface() -> void:
 		_instruction_label.text = "战斗胜利！" if state.battle_outcome == &"victory" else "战斗失败。"
 	elif _busy:
 		_instruction_label.text = "时间正在结算……"
+	elif _move_focus_ring.visible:
+		_instruction_label.text = "第一步：点击移动，再选择青色格。"
 	elif _action_mode == &"move":
 		_instruction_label.text = "选择青色格移动；再次点击移动可取消。"
 	elif _action_mode == &"attack":
@@ -801,26 +921,123 @@ func _hud_label(text_value: String, color: Color, alignment: HorizontalAlignment
 	return label
 
 
-func _action_button(text_value: String, accent: Color, texture: Texture2D) -> Button:
+func _action_button(text_value: String, accent: Color, texture: Texture2D, icon_texture: Texture2D) -> Button:
 	var button := Button.new()
-	button.text = text_value
 	button.custom_minimum_size = Vector2(72.0, 100.0)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", 16)
-	button.add_theme_constant_override("outline_size", 1)
-	button.add_theme_color_override("font_color", accent.lightened(0.18))
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color("#606a7d"))
-	button.add_theme_color_override("font_outline_color", Color("#050812"))
+	button.set_meta("accent", accent)
 	button.add_theme_stylebox_override("normal", _texture_style(texture, 10.0, 7.0))
 	button.add_theme_stylebox_override("hover", _texture_style(texture, 10.0, 7.0, Color(1.16, 1.16, 1.16, 1.0)))
 	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 9.0, Color(1.26, 1.26, 1.26, 1.0)))
 	button.add_theme_stylebox_override("hover_pressed", _texture_style(texture, 10.0, 9.0, Color(1.34, 1.34, 1.34, 1.0)))
 	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.30, 0.32, 0.38, 0.78)))
+
+	var icon := TextureRect.new()
+	icon.name = "Icon"
+	icon.anchor_left = 0.5
+	icon.anchor_top = 0.0
+	icon.anchor_right = 0.5
+	icon.anchor_bottom = 0.0
+	icon.offset_left = -19.0
+	icon.offset_top = 9.0
+	icon.offset_right = 19.0
+	icon.offset_bottom = 47.0
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(icon)
+
+	var caption := Label.new()
+	caption.name = "Caption"
+	caption.anchor_left = 0.0
+	caption.anchor_top = 0.50
+	caption.anchor_right = 1.0
+	caption.anchor_bottom = 0.98
+	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.add_theme_font_size_override("font_size", 15)
+	caption.add_theme_constant_override("outline_size", 1)
+	caption.add_theme_color_override("font_color", accent.lightened(0.18))
+	caption.add_theme_color_override("font_outline_color", Color("#050812"))
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(caption)
+
+	var focus_ring := Panel.new()
+	focus_ring.name = "FocusRing"
+	focus_ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	focus_ring.offset_left = -2.0
+	focus_ring.offset_top = -2.0
+	focus_ring.offset_right = 2.0
+	focus_ring.offset_bottom = 2.0
+	focus_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	focus_ring.add_theme_stylebox_override("panel", _panel_style(Color.TRANSPARENT, Color("#e9fbff"), 3, 9, 0))
+	focus_ring.visible = false
+	button.add_child(focus_ring)
+	_set_action_button_content(button, text_value, icon_texture)
 	return button
+
+
+func _set_action_button_content(button: Button, caption_text: String, icon_texture: Texture2D) -> void:
+	var caption := button.get_node("Caption") as Label
+	var icon := button.get_node("Icon") as TextureRect
+	caption.text = caption_text
+	icon.texture = icon_texture
+	button.set_meta("icon_path", icon_texture.resource_path)
+
+
+func _action_button_icon_path(button: Button) -> String:
+	return String(button.get_meta("icon_path", ""))
+
+
+func _refresh_tutorial_focus(state: BattleState, player: UnitState, player_input: bool) -> void:
+	var tutorial_active := (
+		player_input
+		and state.level_id == &"first_echo"
+		and state.timeline_index == 1
+		and state.turn_index == 1
+		and player != null
+		and not player.has_moved
+		and not player.has_acted
+		and not _move_button.disabled
+	)
+	_move_focus_ring.visible = tutorial_active
+	if not tutorial_active:
+		_tutorial_focus_phase = 0.0
+		_move_focus_ring.modulate.a = 1.0
+
+	var buttons: Array[Button] = [_move_button, _attack_button, _crystallize_button, _end_turn_button]
+	for button in buttons:
+		button.modulate = Color.WHITE if not tutorial_active or button == _move_button else Color(0.62, 0.68, 0.78, 0.58)
+		var icon := button.get_node("Icon") as TextureRect
+		var caption := button.get_node("Caption") as Label
+		icon.modulate = Color.WHITE if not button.disabled else Color(0.58, 0.62, 0.70, 0.38)
+		caption.modulate = Color.WHITE if not button.disabled else Color(0.68, 0.72, 0.80, 0.46)
+
+
+func _icon_status_content(icon_texture: Texture2D, label: Label) -> HBoxContainer:
+	var content := HBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 2)
+	var icon := _compact_icon(icon_texture, 18.0)
+	icon.name = "Icon"
+	content.add_child(icon)
+	content.add_child(label)
+	return content
+
+
+func _compact_icon(icon_texture: Texture2D, icon_size: float, tooltip := "") -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = icon_texture
+	icon.custom_minimum_size = Vector2(icon_size, icon_size)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.tooltip_text = tooltip
+	return icon
 
 
 func _sequence_chip(
@@ -832,7 +1049,7 @@ func _sequence_chip(
 	status_color := COLOR_MUTED
 ) -> PanelContainer:
 	var chip := PanelContainer.new()
-	chip.custom_minimum_size = Vector2(48.0, 66.0)
+	chip.custom_minimum_size = Vector2(44.0, 66.0)
 	chip.set_meta("unit_label", text_value)
 	chip.set_meta("temporal_status", status_text)
 	var chip_tint := Color(1.14, 1.14, 1.14, 1.0) if active else Color.WHITE
@@ -844,7 +1061,7 @@ func _sequence_chip(
 
 	var portrait := TextureRect.new()
 	portrait.texture = _upper_body_portrait(portrait_texture)
-	portrait.custom_minimum_size = Vector2(40.0, 42.0)
+	portrait.custom_minimum_size = Vector2(36.0, 42.0)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST

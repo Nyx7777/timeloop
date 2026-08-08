@@ -40,12 +40,22 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 0", "unknown time shows no awake enemies in the command rail")
 	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("本体"), "upper_body", "command rail uses an upper-body player portrait")
 	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("E1"), "upper_body", "command rail uses upper-body enemy portraits")
+	_expect_equal(screen.get_ui_snapshot_for_test().tutorial_focus_target, "move", "first battle opens with a non-blocking move focus")
+	_expect(bool(screen.get_ui_snapshot_for_test().tutorial_other_actions_dimmed), "tutorial focus dims secondary actions")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.move, "res://assets/ui/m50a/icon_move.png", "move control uses a standalone icon asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.attack, "res://assets/ui/m50a/icon_attack.png", "attack control uses a standalone icon asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.crystallize, "res://assets/ui/m50a/icon_lock.png", "locked crystallize control uses a standalone lock icon")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.end_turn, "res://assets/ui/m50a/icon_end_turn.png", "end-turn control uses a standalone icon asset")
+	screen.set_boss_build_review_for_test(true)
+	_expect(bool(screen.get_ui_snapshot_for_test().boss_build_review_visible), "maximum-information review can expose the boss and build rail")
+	screen.set_boss_build_review_for_test(false)
 	screen.set_action_mode_for_test(&"move")
 	_expect(bool(screen.get_ui_snapshot_for_test().move_selected), "move control exposes the persistent selected state")
 	_expect(not bool(screen.get_ui_snapshot_for_test().attack_selected), "selecting move leaves attack unselected")
 	screen.set_action_mode_for_test(&"smart")
 
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(1, 6)))
+	_expect_equal(screen.get_ui_snapshot_for_test().tutorial_focus_target, "", "tutorial focus clears after the first move")
 	await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(1, 5)))
 	state = _state_from_screen(screen)
 	_expect_equal(state.get_unit(&"guard_01").hp, 2, "presentation submits movement and attack")
@@ -116,6 +126,13 @@ func _test_high_density_battle_assets() -> void:
 		"res://assets/environment/time_void_tile.png": Vector2(256.0, 256.0),
 		"res://assets/environment/lab_obstacle_server.png": Vector2(256.0, 320.0),
 		"res://assets/environment/lab_obstacle_pillar.png": Vector2(256.0, 320.0),
+		"res://assets/ui/m50a/icon_move.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_attack.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_crystallize.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_end_turn.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_fixed.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_awake.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/icon_lock.png": Vector2(128.0, 128.0),
 	}
 	for path in expected_sizes:
 		var texture := load(path) as Texture2D
@@ -131,6 +148,7 @@ func _test_collision_course_screen(screen: BattleScreen) -> void:
 	_expect_equal(state.level_id, &"collision_course", "level selector loads collision_course")
 	_expect_equal(state.holes.size(), 3, "collision_course screen receives time holes")
 	_expect(bool(screen.get_ui_snapshot_for_test().crystallize_visible), "collision_course exposes crystallize control")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.crystallize, "res://assets/ui/m50a/icon_crystallize.png", "enabled crystallize control restores the temporal crystal icon")
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(1, 5)))
 	_expect_equal(screen.get_board_preview_snapshot_for_test().push_preview_count, 1, "attack selection shows knockback landing preview")
 	await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(2, 5)))
