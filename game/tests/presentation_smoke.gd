@@ -13,6 +13,8 @@ func _run() -> void:
 	_test_high_density_battle_assets()
 	await _test_state_sync_clears_preview_cache()
 	await _test_touch_input_maps_to_grid()
+	await _test_event_driven_animation_states()
+	await _test_playback_speeds_keep_identical_results()
 
 	var packed_scene := load("res://presentation/battle/battle_screen.tscn") as PackedScene
 	_expect(packed_scene != null, "battle screen scene loads")
@@ -188,6 +190,87 @@ func _test_touch_input_maps_to_grid() -> void:
 	_expect_equal(captured.cell, Vector2i(0, 7), "screen touch selects the intended logical grid cell")
 	board.queue_free()
 	await process_frame
+
+
+func _test_event_driven_animation_states() -> void:
+	var board := BattleBoardView.new()
+	board.size = Vector2(360.0, 520.0)
+	root.add_child(board)
+	await process_frame
+	var level := load("res://content/levels/first_echo.tres") as LevelDefinition
+	board.sync_from_state(BattleStateFactory.create_from_level(level, 101))
+
+	await board.play_event(BattleEvent.create(&"unit_moved", &"player", {
+		"from": Vector2i(0, 6),
+		"to": Vector2i(1, 6),
+		"path": [Vector2i(0, 6), Vector2i(1, 6)],
+	}), 0.0)
+	var animations: Dictionary = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.MOVE, "move event completes the movement animation state")
+	_expect_equal(animations[&"player"].facing, Vector2i(1, 0), "movement stores the unit facing")
+
+	await board.play_event(BattleEvent.create(&"attack_performed", &"player", {
+		"target_cell": Vector2i(1, 5),
+	}), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.ATTACK, "attack event completes the attack animation state")
+
+	await board.play_event(BattleEvent.create(&"damage_applied", &"player", {
+		"target_id": &"guard_01",
+		"damage": 1,
+		"remaining_hp": 2,
+		"cause": &"attack",
+	}), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"guard_01"].last_completed_state, UnitAnimationState.HIT, "damage event completes the hit animation state")
+
+	await board.play_event(BattleEvent.create(&"units_collided", &"guard_01", {
+		"first_unit_id": &"guard_01",
+		"second_unit_id": &"player",
+		"first_cell": Vector2i(1, 5),
+		"second_cell": Vector2i(1, 6),
+		"damage": 1,
+	}), 3.0)
+	var snapshot := board.get_animation_snapshot_for_test()
+	animations = snapshot.units
+	_expect_equal(animations[&"guard_01"].last_completed_state, UnitAnimationState.COLLISION, "collision shakes the first unit")
+	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.COLLISION, "collision shakes the second unit")
+	_expect_equal(snapshot.floating_number_count, 0, "collision damage numbers clean up after playback")
+	_expect_equal(snapshot.impact_flash_count, 0, "collision flash cleans up after playback")
+
+	await board.play_event(BattleEvent.create(&"timeline_crystallized", &"player"), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.CRYSTALLIZE, "crystallize event completes the crystallize animation state")
+
+	await board.play_event(BattleEvent.create(&"unit_died", &"guard_01", {
+		"cell": Vector2i(1, 5),
+		"cause": &"attack",
+	}), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"guard_01"].last_completed_state, UnitAnimationState.DEATH, "death event completes the death animation state")
+	_expect_equal(animations[&"guard_01"].state, UnitAnimationState.DEATH, "dead unit remains in the terminal animation state")
+	board.queue_free()
+	await process_frame
+
+
+func _test_playback_speeds_keep_identical_results() -> void:
+	var packed_scene := load("res://presentation/battle/battle_screen.tscn") as PackedScene
+	var reference_state: Dictionary = {}
+	for speed in [0.0, 1.0, 3.0]:
+		var screen := packed_scene.instantiate() as BattleScreen
+		root.add_child(screen)
+		await process_frame
+		screen.select_level_for_test(0)
+		screen.set_playback_speed_for_test(speed)
+		await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(1, 6)))
+		await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(1, 5)))
+		var state := screen.get_state_snapshot_for_test()
+		if reference_state.is_empty():
+			reference_state = state
+		else:
+			_expect_equal(state, reference_state, "playback speed %.0fx preserves the same authoritative state" % speed)
+		screen.queue_free()
+		await process_frame
 
 
 func _state_from_screen(screen: BattleScreen) -> BattleState:

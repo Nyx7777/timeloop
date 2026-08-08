@@ -480,6 +480,10 @@ func set_instant_playback_for_test() -> void:
 	_event_player.playback_speed = 0.0
 
 
+func set_playback_speed_for_test(speed: float) -> void:
+	_event_player.playback_speed = speed
+
+
 func submit_command_for_test(command: BattleCommand) -> void:
 	await _submit(command)
 
@@ -495,6 +499,10 @@ func get_state_snapshot_for_test() -> Dictionary:
 
 func get_board_preview_snapshot_for_test() -> Dictionary:
 	return _board.get_preview_snapshot_for_test()
+
+
+func get_board_animation_snapshot_for_test() -> Dictionary:
+	return _board.get_animation_snapshot_for_test()
 
 
 func get_layout_snapshot_for_test() -> Dictionary:
