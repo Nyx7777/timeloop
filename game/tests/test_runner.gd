@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_fixed_history_collision_pushes_player()
 	_test_fixed_history_collision_into_hole_ends_timeline()
 	_test_disturbance_wakes_enemy_next_turn()
+	_test_awake_state_resets_on_next_timeline()
 	_test_crystallize_commits_without_enemy_phase()
 
 	if _failures.is_empty():
@@ -383,6 +384,34 @@ func _test_disturbance_wakes_enemy_next_turn() -> void:
 	var second_end := session.submit(BattleCommand.end_turn(&"player"))
 	var resolved := _find_event(second_end, &"enemy_intents_locked")
 	_expect(bool(resolved.payload.intents[0].reactive), "awake enemy recomputes its action at execution time")
+
+
+func _test_awake_state_resets_on_next_timeline() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.timeline_index = 2
+	state.rules["crystallize_enabled"] = true
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(1, 2), Vector2i(1, 3))]
+	state.enemy_history[2] = [_fixed_move_intent(Vector2i(1, 2), Vector2i(2, 2))]
+	var session := BattleSession.new(state)
+
+	session.submit(BattleCommand.attack(&"player", Vector2i(1, 2)))
+	session.submit(BattleCommand.end_turn(&"player"))
+	_expect_equal(session.state.turn_index, 2, "disturbed T2 enemy reaches its awake turn")
+	_expect(bool(session.state.locked_enemy_intents[0].reactive), "enemy is awake only inside the disturbed timeline")
+	session.submit(BattleCommand.end_turn(&"player"))
+	# Isolate timeline-state inheritance from a fresh displacement replayed by the
+	# new ghost. If the attack recording remained, T3 would correctly disturb the
+	# enemy again when that ghost pushes it.
+	session.state.current_recording.clear()
+	_expect(session.submit(BattleCommand.crystallize(&"player")).accepted, "disturbed timeline can be committed after recording awake behavior")
+	_expect(session.submit(BattleCommand.start_next_timeline()).accepted, "next timeline starts after disturbed history is committed")
+
+	_expect_equal(session.state.timeline_index, 3, "successor is the third timeline")
+	_expect_equal(int(session.state.get_unit(&"guard").statuses.get("awake_from_turn", 0)), 0, "awake marker does not carry from T2 into T3")
+	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "T3 begins by treating rewritten T2 history as fixed")
+	session.submit(BattleCommand.end_turn(&"player"))
+	_expect_equal(session.state.turn_index, 2, "T3 reaches the turn whose behavior was rewritten in T2")
+	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "recorded awake behavior becomes fixed history in T3 until disturbed again")
 
 
 func _test_crystallize_commits_without_enemy_phase() -> void:

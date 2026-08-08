@@ -145,6 +145,7 @@ func _build_top_hud(parent: VBoxContainer) -> void:
 	row.add_child(_status_cell(_fixed_label, Color("#4b2116"), COLOR_FIXED, 72.0))
 
 	_awake_label = _hud_label("清醒 0", COLOR_GOLD, HORIZONTAL_ALIGNMENT_CENTER, 14)
+	_awake_label.tooltip_text = "仅在当前时间线实时决策；进入下一条时间线后，新行为重新成为固定历史。"
 	row.add_child(_status_cell(_awake_label, Color("#463715"), COLOR_GOLD, 72.0))
 
 	var debug_button := Button.new()
@@ -554,6 +555,7 @@ func get_ui_snapshot_for_test() -> Dictionary:
 		"fixed_text": _fixed_label.text,
 		"awake_text": _awake_label.text,
 		"sequence_temporal_states": _sequence_temporal_snapshot(),
+		"sequence_portrait_modes": _sequence_portrait_snapshot(),
 		"next_timeline_visible": _timeline_overlay.visible,
 		"end_turn_disabled": _end_turn_button.disabled,
 		"crystallize_visible": _crystallize_button.visible,
@@ -841,12 +843,13 @@ func _sequence_chip(
 	chip.add_child(content)
 
 	var portrait := TextureRect.new()
-	portrait.texture = portrait_texture
+	portrait.texture = _upper_body_portrait(portrait_texture)
 	portrait.custom_minimum_size = Vector2(40.0, 42.0)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	portrait.modulate = Color.WHITE if active else Color(0.86, 0.90, 1.0, 0.90)
+	chip.set_meta("portrait_mode", "upper_body")
 	content.add_child(portrait)
 
 	var footer := HBoxContainer.new()
@@ -873,6 +876,19 @@ func _sequence_chip(
 		status.add_theme_stylebox_override("normal", _panel_style(Color(status_color, 0.12), status_color.darkened(0.08), 1, 4, 2))
 		footer.add_child(status)
 	return chip
+
+
+func _upper_body_portrait(source: Texture2D) -> AtlasTexture:
+	var portrait := AtlasTexture.new()
+	portrait.atlas = source
+	var source_size := source.get_size()
+	portrait.region = Rect2(
+		source_size.x * 0.12,
+		source_size.y * 0.03,
+		source_size.x * 0.76,
+		source_size.y * 0.66
+	)
+	return portrait
 
 
 func _status_cell(content: Control, background: Color, border: Color, minimum_width: float, expand := false) -> PanelContainer:
@@ -918,7 +934,7 @@ func _temporal_status_tooltip(status_text: String) -> String:
 	if status_text == "待醒":
 		return "已扰动：本回合仍锁定，下回合清醒"
 	if status_text == "醒":
-		return "清醒：玩家行动后实时决策"
+		return "本线清醒：玩家行动后实时决策；下一条时间线重新固化"
 	if status_text == "录":
 		return "已记录的分身行动"
 	return ""
@@ -931,6 +947,16 @@ func _sequence_temporal_snapshot() -> Dictionary:
 		if label.is_empty():
 			continue
 		snapshot[label] = String(child.get_meta("temporal_status", ""))
+	return snapshot
+
+
+func _sequence_portrait_snapshot() -> Dictionary:
+	var snapshot := {}
+	for child in _sequence_row.get_children():
+		var label := String(child.get_meta("unit_label", ""))
+		if label.is_empty():
+			continue
+		snapshot[label] = String(child.get_meta("portrait_mode", ""))
 	return snapshot
 
 

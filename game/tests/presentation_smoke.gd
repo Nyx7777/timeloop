@@ -38,6 +38,8 @@ func _run() -> void:
 	_expect(not bool(screen.get_ui_snapshot_for_test().end_turn_disabled), "initial controls are enabled")
 	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 0", "unknown time shows no fixed enemies in the command rail")
 	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 0", "unknown time shows no awake enemies in the command rail")
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("本体"), "upper_body", "command rail uses an upper-body player portrait")
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("E1"), "upper_body", "command rail uses upper-body enemy portraits")
 	screen.set_action_mode_for_test(&"move")
 	_expect(bool(screen.get_ui_snapshot_for_test().move_selected), "move control exposes the persistent selected state")
 	_expect(not bool(screen.get_ui_snapshot_for_test().attack_selected), "selecting move leaves attack unselected")
@@ -60,6 +62,7 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 1", "known time counts the fixed enemy in the command rail")
 	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 0", "known time keeps the awake count at zero")
 	_expect_equal(screen.get_ui_snapshot_for_test().sequence_temporal_states.get("E1"), "定", "fixed enemy sequence card carries the fixed-history tag")
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("G1"), "upper_body", "command rail uses upper-body ghost portraits")
 
 	var known_state := BattleState.from_dict(state.to_dict())
 	var mixed_state := BattleState.from_dict(state.to_dict())
