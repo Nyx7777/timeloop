@@ -37,13 +37,37 @@ func _run() -> void:
 	board._set_attack_progress(0.52, &"player", Vector2i(0, -1), attack_flash)
 	await _capture("attack_390x844.png", output_dir)
 
+	board.sync_from_state(BattleStateFactory.create_from_level(load("res://content/levels/first_echo.tres"), 204))
+	await board.play_event(BattleEvent.create(&"unit_moved", &"player", {
+		"from": Vector2i(0, 7),
+		"to": Vector2i(0, 5),
+		"path": [Vector2i(0, 7), Vector2i(0, 6), Vector2i(0, 5)],
+	}), 0.0)
+	var guard_animation: UnitAnimationState = board._ensure_animation(&"guard_01")
+	guard_animation.begin(UnitAnimationState.ATTACK, Vector2i(-1, 0))
+	var enemy_left_flash: Dictionary = board._add_impact_flash(board.grid_to_local(Vector2i(0, 5)), board.COLOR_HIT)
+	board._set_attack_progress(0.52, &"guard_01", Vector2i(-1, 0), enemy_left_flash)
+	await _capture("enemy_attack_left_390x844.png", output_dir)
+
+	board.sync_from_state(BattleStateFactory.create_from_level(load("res://content/levels/collision_course.tres"), 205))
+	await board.play_event(BattleEvent.create(&"unit_moved", &"player", {
+		"from": Vector2i(0, 7),
+		"to": Vector2i(3, 5),
+		"path": [Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7), Vector2i(3, 7), Vector2i(3, 6), Vector2i(3, 5)],
+	}), 0.0)
+	guard_animation = board._ensure_animation(&"guard_01")
+	guard_animation.begin(UnitAnimationState.ATTACK, Vector2i(1, 0))
+	var enemy_right_flash: Dictionary = board._add_impact_flash(board.grid_to_local(Vector2i(3, 5)), board.COLOR_HIT)
+	board._set_attack_progress(0.52, &"guard_01", Vector2i(1, 0), enemy_right_flash)
+	await _capture("enemy_attack_right_390x844.png", output_dir)
+
 	board.sync_from_state(BattleStateFactory.create_from_level(load("res://content/levels/first_echo.tres"), 201))
 	await board.play_event(BattleEvent.create(&"unit_moved", &"player", {
 		"from": Vector2i(0, 7),
 		"to": Vector2i(1, 6),
 		"path": [Vector2i(0, 7), Vector2i(0, 6), Vector2i(1, 6)],
 	}), 0.0)
-	var guard_animation: UnitAnimationState = board._ensure_animation(&"guard_01")
+	guard_animation = board._ensure_animation(&"guard_01")
 	player_animation = board._ensure_animation(&"player")
 	guard_animation.begin(UnitAnimationState.COLLISION, Vector2i(0, 1))
 	player_animation.begin(UnitAnimationState.COLLISION, Vector2i(0, -1))

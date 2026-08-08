@@ -132,7 +132,11 @@ func get_layout_snapshot_for_test() -> Dictionary:
 func get_animation_snapshot_for_test() -> Dictionary:
 	var units := {}
 	for unit_id in _unit_animations:
-		units[unit_id] = _unit_animations[unit_id].snapshot()
+		var animation: UnitAnimationState = _unit_animations[unit_id]
+		var snapshot: Dictionary = animation.snapshot()
+		if _display_units.has(unit_id):
+			snapshot["draw_scale_x"] = _horizontal_sprite_scale(_display_units[unit_id], animation)
+		units[unit_id] = snapshot
 	return {
 		"units": units,
 		"floating_number_count": _floating_numbers.size(),
@@ -308,7 +312,7 @@ func _draw_units() -> void:
 		var sprite_modulate := Color(1.0, 1.0, 1.0, 0.88) if is_ghost else Color.WHITE
 		sprite_modulate *= animation.tint
 		sprite_modulate.a *= animation.opacity
-		var facing_scale_x := -1.0 if animation.facing.x < 0 else 1.0
+		var facing_scale_x := _horizontal_sprite_scale(entry, animation)
 		draw_set_transform(
 			Vector2(roundf(sprite_foot.x + animation.offset.x), roundf(sprite_foot.y + animation.offset.y)),
 			animation.rotation,
@@ -386,6 +390,15 @@ func _draw_temporal_shards(center: Vector2, animation: UnitAnimationState) -> vo
 		draw_colored_polygon(PackedVector2Array([shard_center + tip, shard_center + side, shard_center - tip * 0.45, shard_center - side]), Color(color, alpha))
 	if animation.state == UnitAnimationState.CRYSTALLIZE:
 		draw_circle(center, cell_size * (0.24 + progress * 0.22), Color(color, alpha * 0.7), false, maxf(1.5, cell_size * 0.04), true)
+
+
+func _horizontal_sprite_scale(entry: Dictionary, animation: UnitAnimationState) -> float:
+	if animation.facing.x == 0:
+		return 1.0
+	# The validated player master faces screen-right, while the guard master faces
+	# screen-left. Mirror relative to each identity's own authored direction.
+	var authored_facing_x := 1 if bool(entry.get("is_ghost", false)) or entry.get("team", &"") == &"player" else -1
+	return 1.0 if animation.facing.x == authored_facing_x else -1.0
 
 
 func _draw_foot_ellipse(center: Vector2, radius: float, color: Color) -> void:

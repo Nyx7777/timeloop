@@ -215,6 +215,20 @@ func _test_event_driven_animation_states() -> void:
 	animations = board.get_animation_snapshot_for_test().units
 	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.ATTACK, "attack event completes the attack animation state")
 
+	await board.play_event(BattleEvent.create(&"attack_performed", &"guard_01", {
+		"target_cell": Vector2i(0, 5),
+	}), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"guard_01"].facing, Vector2i(-1, 0), "enemy attack stores a left-facing direction")
+	_expect_equal(animations[&"guard_01"].draw_scale_x, 1.0, "left-facing enemy keeps the guard master's authored orientation")
+
+	await board.play_event(BattleEvent.create(&"attack_performed", &"guard_01", {
+		"target_cell": Vector2i(2, 5),
+	}), 0.0)
+	animations = board.get_animation_snapshot_for_test().units
+	_expect_equal(animations[&"guard_01"].facing, Vector2i(1, 0), "enemy attack stores a right-facing direction")
+	_expect_equal(animations[&"guard_01"].draw_scale_x, -1.0, "right-facing enemy mirrors the left-facing guard master")
+
 	await board.play_event(BattleEvent.create(&"damage_applied", &"player", {
 		"target_id": &"guard_01",
 		"damage": 1,
