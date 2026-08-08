@@ -12,6 +12,9 @@ const BUTTON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m42c/button_crystal
 const BUTTON_END_TURN_TEXTURE := preload("res://assets/ui/m42c/button_endturn_9patch.png")
 const SEQUENCE_ACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_active.png")
 const SEQUENCE_INACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_inactive.png")
+const PLAYER_PORTRAIT_TEXTURE := preload("res://assets/characters/player_idle.png")
+const GHOST_PORTRAIT_TEXTURE := preload("res://assets/characters/ghost_idle.png")
+const ENEMY_PORTRAIT_TEXTURE := preload("res://assets/characters/guard_idle.png")
 
 const LEVELS := [
 	{"label": "1 · 留下第一个自己", "path": "res://content/levels/first_echo.tres", "number": 1},
@@ -28,6 +31,7 @@ const COLOR_PANEL_ALT := Color("#151d31")
 const COLOR_CYAN := Color("#55e8ff")
 const COLOR_PURPLE := Color("#b47cff")
 const COLOR_RED := Color("#ff5d68")
+const COLOR_FIXED := Color("#ff8a3d")
 const COLOR_GOLD := Color("#e9b95f")
 const COLOR_MUTED := Color("#91a3c2")
 
@@ -38,7 +42,8 @@ var _event_player: Node
 var _timeline_label: Label
 var _round_label: Label
 var _time_label: Label
-var _lives_label: Label
+var _fixed_label: Label
+var _awake_label: Label
 var _sequence_row: HBoxContainer
 
 var _mission_label: Label
@@ -114,53 +119,59 @@ func _build_interface() -> void:
 
 func _build_top_hud(parent: VBoxContainer) -> void:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size.y = 48.0
+	panel.custom_minimum_size.y = 54.0
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _texture_style(HUD_PANEL_TEXTURE, 8.0, 8.0))
+	panel.add_theme_stylebox_override("panel", _texture_style(HUD_PANEL_TEXTURE, 8.0, 5.0))
 	parent.add_child(panel)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", 4)
 	panel.add_child(row)
 
-	_timeline_label = _hud_label("T1/2", COLOR_CYAN, HORIZONTAL_ALIGNMENT_LEFT)
-	_timeline_label.custom_minimum_size.x = 72.0
-	row.add_child(_timeline_label)
+	_timeline_label = _hud_label("T1/2", COLOR_CYAN, HORIZONTAL_ALIGNMENT_CENTER, 17)
+	row.add_child(_status_cell(_timeline_label, Color("#165164"), COLOR_CYAN, 58.0))
 
 	var center := VBoxContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	center.add_theme_constant_override("separation", -2)
-	row.add_child(center)
 
-	_round_label = _hud_label("回合 1", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	_round_label = _hud_label("回合 1", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 16)
 	center.add_child(_round_label)
-	_time_label = _hud_label("未知时间", COLOR_MUTED, HORIZONTAL_ALIGNMENT_CENTER, 12)
+	_time_label = _hud_label("未知时间", COLOR_MUTED, HORIZONTAL_ALIGNMENT_CENTER, 10)
 	center.add_child(_time_label)
+	row.add_child(_status_cell(center, Color("#25203f"), Color("#615185"), 76.0, true))
 
-	_lives_label = _hud_label("◆◆", COLOR_CYAN, HORIZONTAL_ALIGNMENT_RIGHT)
-	_lives_label.custom_minimum_size.x = 66.0
-	row.add_child(_lives_label)
+	_fixed_label = _hud_label("固定 0", COLOR_FIXED, HORIZONTAL_ALIGNMENT_CENTER, 14)
+	row.add_child(_status_cell(_fixed_label, Color("#4b2116"), COLOR_FIXED, 72.0))
+
+	_awake_label = _hud_label("清醒 0", COLOR_GOLD, HORIZONTAL_ALIGNMENT_CENTER, 14)
+	row.add_child(_status_cell(_awake_label, Color("#463715"), COLOR_GOLD, 72.0))
 
 	var debug_button := Button.new()
 	debug_button.text = "≡"
 	debug_button.tooltip_text = "关卡与调试菜单"
-	debug_button.custom_minimum_size = Vector2(34.0, 34.0)
+	debug_button.custom_minimum_size = Vector2(28.0, 40.0)
 	debug_button.focus_mode = Control.FOCUS_NONE
+	debug_button.add_theme_font_size_override("font_size", 16)
+	debug_button.add_theme_color_override("font_color", COLOR_MUTED)
+	debug_button.add_theme_stylebox_override("normal", _panel_style(Color("#0c1220"), Color("#343050"), 1, 4, 2))
+	debug_button.add_theme_stylebox_override("hover", _panel_style(Color("#171d30"), COLOR_CYAN.darkened(0.25), 1, 4, 2))
+	debug_button.add_theme_stylebox_override("pressed", _panel_style(Color("#070b13"), COLOR_CYAN, 1, 4, 2))
 	debug_button.pressed.connect(_open_debug_overlay)
 	row.add_child(debug_button)
 
 
 func _build_sequence_bar(parent: VBoxContainer) -> void:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size.y = 42.0
+	panel.custom_minimum_size.y = 78.0
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel_style(Color("#0b1020"), Color("#28213f"), 1, 7, 4))
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("#080d19"), Color("#342554"), 1, 7, 4))
 	parent.add_child(panel)
 
 	var center := CenterContainer.new()
 	panel.add_child(center)
 	_sequence_row = HBoxContainer.new()
-	_sequence_row.add_theme_constant_override("separation", 4)
+	_sequence_row.add_theme_constant_override("separation", 5)
 	center.add_child(_sequence_row)
 
 
@@ -493,6 +504,19 @@ func select_level_for_test(index: int) -> void:
 	_start_battle()
 
 
+func set_state_for_test(state: BattleState) -> void:
+	_session = BattleSession.new(BattleState.from_dict(state.to_dict()))
+	_action_mode = &"smart"
+	_active_actor = _session.state.player_id
+	_board.sync_from_state(_session.state)
+	_refresh_interface()
+
+
+func set_action_mode_for_test(mode: StringName) -> void:
+	_action_mode = mode
+	_refresh_interface()
+
+
 func get_state_snapshot_for_test() -> Dictionary:
 	return _session.state.to_dict()
 
@@ -525,12 +549,19 @@ func get_layout_snapshot_for_test() -> Dictionary:
 func get_ui_snapshot_for_test() -> Dictionary:
 	return {
 		"instruction": _instruction_label.text,
+		"timeline_text": _timeline_label.text,
+		"time_text": _time_label.text,
+		"fixed_text": _fixed_label.text,
+		"awake_text": _awake_label.text,
+		"sequence_temporal_states": _sequence_temporal_snapshot(),
 		"next_timeline_visible": _timeline_overlay.visible,
 		"end_turn_disabled": _end_turn_button.disabled,
 		"crystallize_visible": _crystallize_button.visible,
 		"crystallize_disabled": _crystallize_button.disabled,
 		"move_disabled": _move_button.disabled,
 		"attack_disabled": _attack_button.disabled,
+		"move_selected": _move_button.button_pressed,
+		"attack_selected": _attack_button.button_pressed,
 		"busy": _busy,
 	}
 
@@ -545,7 +576,11 @@ func _refresh_interface() -> void:
 	_round_label.text = "回合 %d" % state.turn_index
 	_time_label.text = _time_state_text(state.time_state)
 	_time_label.add_theme_color_override("font_color", COLOR_GOLD if state.time_state == &"known" else (Color("#ff8fc7") if state.time_state == &"disturbed" else COLOR_MUTED))
-	_lives_label.text = "◆".repeat(state.lives_left)
+	var temporal_counts := _enemy_temporal_counts(state)
+	_fixed_label.text = "固定 %d" % int(temporal_counts.fixed)
+	_awake_label.text = "清醒 %d" % int(temporal_counts.awake)
+	_fixed_label.modulate = Color.WHITE if int(temporal_counts.fixed) > 0 else Color(1.0, 1.0, 1.0, 0.48)
+	_awake_label.modulate = Color.WHITE if int(temporal_counts.awake) > 0 else Color(1.0, 1.0, 1.0, 0.48)
 	_refresh_sequence_bar(state)
 
 	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
@@ -564,6 +599,12 @@ func _refresh_interface() -> void:
 	_end_turn_button.disabled = not player_input
 	_crystallize_button.visible = true
 	_crystallize_button.disabled = not player_input or not bool(state.rules.get("crystallize_enabled", false)) or state.lives_left <= 1
+	if not bool(state.rules.get("crystallize_enabled", false)):
+		_crystallize_button.text = "锁定\n固化"
+	elif state.lives_left <= 1:
+		_crystallize_button.text = "末命\n固化"
+	else:
+		_crystallize_button.text = "◆\n固化"
 	_move_button.button_pressed = _action_mode == &"move" and not _move_button.disabled
 	_attack_button.button_pressed = _action_mode == &"attack" and not _attack_button.disabled
 
@@ -612,10 +653,17 @@ func _refresh_sequence_bar(state: BattleState) -> void:
 	var ghost_ids: Array = state.ghost_positions.keys()
 	ghost_ids.sort()
 	for ghost_index in range(ghost_ids.size()):
-		_sequence_row.add_child(_sequence_chip("G%d" % (ghost_index + 1), COLOR_PURPLE, ghost_ids[ghost_index] == _active_actor))
+		_sequence_row.add_child(_sequence_chip(
+			"G%d" % (ghost_index + 1),
+			COLOR_PURPLE,
+			ghost_ids[ghost_index] == _active_actor,
+			GHOST_PORTRAIT_TEXTURE,
+			"录",
+			COLOR_PURPLE
+		))
 
 	var player_active := state.phase == BattlePhase.PLAYER_INPUT and not _busy
-	_sequence_row.add_child(_sequence_chip("本体", COLOR_CYAN, player_active or _active_actor == state.player_id))
+	_sequence_row.add_child(_sequence_chip("本体", COLOR_CYAN, player_active or _active_actor == state.player_id, PLAYER_PORTRAIT_TEXTURE))
 
 	var enemy_index := 0
 	for unit_id in state.unit_order:
@@ -623,7 +671,27 @@ func _refresh_sequence_bar(state: BattleState) -> void:
 		if unit == null or not unit.active or unit.team != &"enemy":
 			continue
 		enemy_index += 1
-		_sequence_row.add_child(_sequence_chip("E%d" % enemy_index, COLOR_RED, unit_id == _active_actor))
+		var temporal_status := _enemy_temporal_status(state, unit)
+		var status_text := ""
+		var status_color := COLOR_RED
+		match temporal_status:
+			&"fixed":
+				status_text = "定"
+				status_color = COLOR_FIXED
+			&"pending_awake":
+				status_text = "待醒"
+				status_color = Color("#ff8fc7")
+			&"awake":
+				status_text = "醒"
+				status_color = COLOR_GOLD
+		_sequence_row.add_child(_sequence_chip(
+			"E%d" % enemy_index,
+			status_color if temporal_status != &"unknown" else COLOR_RED,
+			unit_id == _active_actor,
+			ENEMY_PORTRAIT_TEXTURE,
+			status_text,
+			status_color
+		))
 
 
 func _get_reachable_cells() -> Array[Vector2i]:
@@ -734,34 +802,136 @@ func _hud_label(text_value: String, color: Color, alignment: HorizontalAlignment
 func _action_button(text_value: String, accent: Color, texture: Texture2D) -> Button:
 	var button := Button.new()
 	button.text = text_value
-	button.custom_minimum_size = Vector2(72.0, 92.0)
+	button.custom_minimum_size = Vector2(72.0, 100.0)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", 17)
+	button.add_theme_font_size_override("font_size", 16)
+	button.add_theme_constant_override("outline_size", 1)
 	button.add_theme_color_override("font_color", accent.lightened(0.18))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_color_override("font_pressed_color", Color.WHITE)
 	button.add_theme_color_override("font_disabled_color", Color("#606a7d"))
+	button.add_theme_color_override("font_outline_color", Color("#050812"))
 	button.add_theme_stylebox_override("normal", _texture_style(texture, 10.0, 7.0))
-	button.add_theme_stylebox_override("hover", _texture_style(texture, 10.0, 7.0, Color(1.18, 1.18, 1.18, 1.0)))
-	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 7.0, Color(0.70, 0.78, 0.88, 1.0)))
-	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.34, 0.36, 0.42, 0.82)))
+	button.add_theme_stylebox_override("hover", _texture_style(texture, 10.0, 7.0, Color(1.16, 1.16, 1.16, 1.0)))
+	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 9.0, Color(1.26, 1.26, 1.26, 1.0)))
+	button.add_theme_stylebox_override("hover_pressed", _texture_style(texture, 10.0, 9.0, Color(1.34, 1.34, 1.34, 1.0)))
+	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.30, 0.32, 0.38, 0.78)))
 	return button
 
 
-func _sequence_chip(text_value: String, accent: Color, active: bool) -> PanelContainer:
+func _sequence_chip(
+	text_value: String,
+	accent: Color,
+	active: bool,
+	portrait_texture: Texture2D,
+	status_text := "",
+	status_color := COLOR_MUTED
+) -> PanelContainer:
 	var chip := PanelContainer.new()
-	chip.custom_minimum_size = Vector2(42.0, 30.0)
-	chip.add_theme_stylebox_override("panel", _texture_style(SEQUENCE_ACTIVE_TEXTURE if active else SEQUENCE_INACTIVE_TEXTURE, 8.0, 3.0))
+	chip.custom_minimum_size = Vector2(48.0, 66.0)
+	chip.set_meta("unit_label", text_value)
+	chip.set_meta("temporal_status", status_text)
+	var chip_tint := Color(1.14, 1.14, 1.14, 1.0) if active else Color.WHITE
+	chip.add_theme_stylebox_override("panel", _texture_style(SEQUENCE_ACTIVE_TEXTURE if active else SEQUENCE_INACTIVE_TEXTURE, 8.0, 3.0, chip_tint))
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", -1)
+	chip.add_child(content)
+
+	var portrait := TextureRect.new()
+	portrait.texture = portrait_texture
+	portrait.custom_minimum_size = Vector2(40.0, 42.0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	portrait.modulate = Color.WHITE if active else Color(0.86, 0.90, 1.0, 0.90)
+	content.add_child(portrait)
+
+	var footer := HBoxContainer.new()
+	footer.alignment = BoxContainer.ALIGNMENT_CENTER
+	footer.add_theme_constant_override("separation", 2)
+	content.add_child(footer)
+
 	var label := Label.new()
-	label.text = "▼ %s" % text_value if active else text_value
+	label.text = "▼%s" % text_value if active else text_value
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", Color.WHITE if active else accent.lightened(0.05))
-	chip.add_child(label)
+	footer.add_child(label)
+
+	if not status_text.is_empty():
+		var status := Label.new()
+		status.text = status_text
+		status.tooltip_text = _temporal_status_tooltip(status_text)
+		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		status.add_theme_font_size_override("font_size", 9 if status_text.length() <= 1 else 8)
+		status.add_theme_color_override("font_color", status_color.lightened(0.12))
+		status.add_theme_stylebox_override("normal", _panel_style(Color(status_color, 0.12), status_color.darkened(0.08), 1, 4, 2))
+		footer.add_child(status)
 	return chip
+
+
+func _status_cell(content: Control, background: Color, border: Color, minimum_width: float, expand := false) -> PanelContainer:
+	var cell := PanelContainer.new()
+	cell.custom_minimum_size = Vector2(minimum_width, 40.0)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL if expand else Control.SIZE_SHRINK_CENTER
+	cell.add_theme_stylebox_override("panel", _panel_style(background, border.darkened(0.08), 1, 5, 4))
+	cell.add_child(content)
+	return cell
+
+
+func _enemy_temporal_counts(state: BattleState) -> Dictionary:
+	var counts := {"fixed": 0, "awake": 0}
+	for unit_id in state.unit_order:
+		var unit := state.get_unit(unit_id)
+		if unit == null or not unit.active or unit.team != &"enemy":
+			continue
+		var status := _enemy_temporal_status(state, unit)
+		if status == &"awake":
+			counts.awake += 1
+		elif status == &"fixed" or status == &"pending_awake":
+			counts.fixed += 1
+	return counts
+
+
+func _enemy_temporal_status(state: BattleState, unit: UnitState) -> StringName:
+	var awake_from := int(unit.statuses.get("awake_from_turn", 0))
+	if awake_from > 0 and state.turn_index >= awake_from:
+		return &"awake"
+	if awake_from > state.turn_index and bool(unit.statuses.get("disturbed", false)):
+		return &"pending_awake"
+	for intent_data in state.locked_enemy_intents:
+		var intent: Dictionary = intent_data
+		if StringName(intent.get("enemy_id", &"")) != unit.unit_id:
+			continue
+		return &"awake" if bool(intent.get("reactive", false)) else &"fixed"
+	return &"unknown"
+
+
+func _temporal_status_tooltip(status_text: String) -> String:
+	if status_text == "定":
+		return "固定历史：本回合行为可预知"
+	if status_text == "待醒":
+		return "已扰动：本回合仍锁定，下回合清醒"
+	if status_text == "醒":
+		return "清醒：玩家行动后实时决策"
+	if status_text == "录":
+		return "已记录的分身行动"
+	return ""
+
+
+func _sequence_temporal_snapshot() -> Dictionary:
+	var snapshot := {}
+	for child in _sequence_row.get_children():
+		var label := String(child.get_meta("unit_label", ""))
+		if label.is_empty():
+			continue
+		snapshot[label] = String(child.get_meta("temporal_status", ""))
+	return snapshot
 
 
 func _texture_style(texture: Texture2D, texture_margin: float, content_margin: float, modulate := Color.WHITE) -> StyleBoxTexture:

@@ -36,6 +36,12 @@ func _run() -> void:
 	var state := _state_from_screen(screen)
 	_expect_equal(state.phase, BattlePhase.PLAYER_INPUT, "screen starts in player input")
 	_expect(not bool(screen.get_ui_snapshot_for_test().end_turn_disabled), "initial controls are enabled")
+	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 0", "unknown time shows no fixed enemies in the command rail")
+	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 0", "unknown time shows no awake enemies in the command rail")
+	screen.set_action_mode_for_test(&"move")
+	_expect(bool(screen.get_ui_snapshot_for_test().move_selected), "move control exposes the persistent selected state")
+	_expect(not bool(screen.get_ui_snapshot_for_test().attack_selected), "selecting move leaves attack unselected")
+	screen.set_action_mode_for_test(&"smart")
 
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(1, 6)))
 	await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(1, 5)))
@@ -51,6 +57,21 @@ func _run() -> void:
 	state = _state_from_screen(screen)
 	_expect_equal(state.timeline_index, 2, "screen starts the second timeline")
 	_expect_equal(state.ghost_positions.get(&"ghost_t1"), Vector2i(1, 6), "ghost playback updates the board model")
+	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 1", "known time counts the fixed enemy in the command rail")
+	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 0", "known time keeps the awake count at zero")
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_temporal_states.get("E1"), "定", "fixed enemy sequence card carries the fixed-history tag")
+
+	var known_state := BattleState.from_dict(state.to_dict())
+	var mixed_state := BattleState.from_dict(state.to_dict())
+	mixed_state.get_unit(&"guard_01").statuses["disturbed"] = true
+	mixed_state.get_unit(&"guard_01").statuses["awake_from_turn"] = mixed_state.turn_index
+	mixed_state.locked_enemy_intents[0]["reactive"] = true
+	mixed_state.time_state = &"disturbed"
+	screen.set_state_for_test(mixed_state)
+	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 0", "awake enemy leaves the fixed count")
+	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 1", "mixed command rail counts the awake enemy")
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_temporal_states.get("E1"), "醒", "awake enemy sequence card carries the awake tag")
+	screen.set_state_for_test(known_state)
 
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(0, 5)))
 	await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(1, 5)))
