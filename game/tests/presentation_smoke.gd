@@ -50,6 +50,11 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.attack, "res://assets/ui/m50a/button_frame_glow_attack.png", "attack control uses the luminous frame asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.crystallize, "res://assets/ui/m50a/button_frame_glow_crystallize.png", "crystallize control uses the luminous frame asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.end_turn, "res://assets/ui/m50a/button_frame_glow_end_turn.png", "end-turn control uses the luminous frame asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.move, "res://assets/ui/m50a/button_inner_glow_move.png", "move control uses the restrained inner glow asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.attack, "res://assets/ui/m50a/button_inner_glow_attack.png", "attack control uses the restrained inner glow asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.crystallize, "res://assets/ui/m50a/button_inner_glow_crystallize.png", "crystallize control uses the restrained inner glow asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.end_turn, "res://assets/ui/m50a/button_inner_glow_end_turn.png", "end-turn control uses the restrained inner glow asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().crystallize_caption, "固化", "locked crystallize control keeps a single-line caption")
 	screen.open_debug_overlay_for_test()
 	_expect(bool(screen.get_ui_snapshot_for_test().debug_overlay_visible), "playtest menu exposes the review entry")
 	_expect_equal(screen.get_ui_snapshot_for_test().boss_review_button_text, "进入 M5.0A · Boss + Build 评审态", "playtest menu names the non-level review state explicitly")
@@ -149,6 +154,10 @@ func _test_high_density_battle_assets() -> void:
 		"res://assets/ui/m50a/button_frame_glow_attack.png": Vector2(128.0, 160.0),
 		"res://assets/ui/m50a/button_frame_glow_crystallize.png": Vector2(128.0, 160.0),
 		"res://assets/ui/m50a/button_frame_glow_end_turn.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_inner_glow_move.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_inner_glow_attack.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_inner_glow_crystallize.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_inner_glow_end_turn.png": Vector2(128.0, 160.0),
 	}
 	for path in expected_sizes:
 		var texture := load(path) as Texture2D
@@ -165,6 +174,7 @@ func _test_collision_course_screen(screen: BattleScreen) -> void:
 	_expect_equal(state.holes.size(), 3, "collision_course screen receives time holes")
 	_expect(bool(screen.get_ui_snapshot_for_test().crystallize_visible), "collision_course exposes crystallize control")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.crystallize, "res://assets/ui/m50a/icon_crystallize.png", "enabled crystallize control restores the temporal crystal icon")
+	_expect_equal(screen.get_ui_snapshot_for_test().crystallize_caption, "固化", "enabled crystallize control keeps the same single-line caption")
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(1, 5)))
 	_expect_equal(screen.get_board_preview_snapshot_for_test().push_preview_count, 1, "attack selection shows knockback landing preview")
 	await screen.submit_command_for_test(BattleCommand.attack(&"player", Vector2i(2, 5)))
