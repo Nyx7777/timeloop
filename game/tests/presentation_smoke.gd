@@ -70,6 +70,7 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().boss_review_button_text, "退出评审态并返回原关卡", "review menu exposes an explicit exit")
 	screen.exit_boss_build_review_for_test()
 	_expect(not bool(screen.get_ui_snapshot_for_test().boss_build_review_mode), "exiting review restores normal battle mode")
+	await _test_m50c_readability_review(screen)
 	screen.set_action_mode_for_test(&"move")
 	_expect(bool(screen.get_ui_snapshot_for_test().move_selected), "move control exposes the persistent selected state")
 	_expect(not bool(screen.get_ui_snapshot_for_test().attack_selected), "selecting move leaves attack unselected")
@@ -335,6 +336,67 @@ func _test_mobile_layout(screen: BattleScreen) -> void:
 	_expect(float(layout.board_rect.size.x) <= float(layout.board_size.x) + 0.1, "board fits inside its horizontal presentation region")
 	_expect(float(layout.board_rect.size.y) <= float(layout.board_size.y) + 0.1, "board fits inside its vertical presentation region")
 	_expect(int(layout.sequence_count) >= 2, "action sequence includes the player and active enemies")
+
+
+func _test_m50c_readability_review(screen: BattleScreen) -> void:
+	var initial_ui := screen.get_ui_snapshot_for_test()
+	_expect_equal(initial_ui.readability_review_button_text, "进入 M5.0C · 只读读图评审", "playtest menu exposes the M5.0C timed readability entry")
+	_expect("对照：" not in String(initial_ui.readability_review_details), "readability entry does not leak the answer before exposure")
+	var expected_visible := [0, 2, 4, 2, 2, 3]
+	var expected_awake := [0, 0, 0, 0, 1, 1]
+	var expected_sequence := [2, 4, 7, 4, 6, 7]
+	for scenario_index in range(6):
+		screen.enter_readability_review_for_test(scenario_index)
+		await process_frame
+		var ui := screen.get_ui_snapshot_for_test()
+		var preview := screen.get_board_preview_snapshot_for_test()
+		_expect(bool(ui.readability_review_mode), "M5.0C scenario %d enters a dedicated read-only mode" % (scenario_index + 1))
+		_expect_equal(int(ui.readability_scenario_index), scenario_index, "M5.0C scenario %d keeps stable identity" % (scenario_index + 1))
+		_expect(bool(ui.end_turn_disabled) and bool(ui.move_disabled) and bool(ui.attack_disabled), "M5.0C scenario %d blocks battle mutation during timed reading" % (scenario_index + 1))
+		_expect_equal(int(preview.enemy_intent_count), expected_visible[scenario_index], "M5.0C scenario %d exposes the intended locked geometry count" % (scenario_index + 1))
+		_expect_equal(int(preview.awake_question_count), expected_awake[scenario_index], "M5.0C scenario %d exposes the intended awake marker count" % (scenario_index + 1))
+		if scenario_index == 2:
+			screen.focus_enemy_for_test(&"guard_02")
+			preview = screen.get_board_preview_snapshot_for_test()
+			var dimmed_count := 0
+			for intent_data in preview.enemy_intents:
+				if float((intent_data as Dictionary).get("opacity", 1.0)) < 0.3:
+					dimmed_count += 1
+			_expect_equal(preview.focused_enemy_id, &"guard_02", "crossed-path scenario keeps action-card focus available")
+			_expect_equal(dimmed_count, 3, "crossed-path focus dims the other three enemy intents")
+		if scenario_index == 3:
+			var waiting_count := 0
+			for intent_data in preview.enemy_intents:
+				if bool((intent_data as Dictionary).get("waiting", false)):
+					waiting_count += 1
+			_expect_equal(waiting_count, 1, "attack-and-wait scenario keeps one explicit waiting badge")
+		if scenario_index == 4:
+			_expect("本回合仍锁定" in String(ui.instruction), "mixed scenario explains the pending enemy without opening logs")
+		if scenario_index == 5:
+			_expect(bool(ui.boss_build_review_visible), "information-limit scenario includes the existing Boss and Build rail")
+		screen.finish_readability_exposure_for_test()
+		ui = screen.get_ui_snapshot_for_test()
+		_expect(bool(ui.readability_cover_visible), "M5.0C scenario %d automatically covers the board after exposure" % (scenario_index + 1))
+		_expect(not bool(ui.readability_answer_visible), "M5.0C scenario %d asks before revealing the answer" % (scenario_index + 1))
+		_expect(not String(ui.readability_prompt_text).is_empty(), "M5.0C scenario %d provides a post-exposure question" % (scenario_index + 1))
+		screen.reveal_readability_answer_for_test()
+		_expect(bool(screen.get_ui_snapshot_for_test().readability_answer_visible), "M5.0C scenario %d reveals its answer only on request" % (scenario_index + 1))
+		screen.exit_readability_review_for_test()
+
+	for viewport_size in [Vector2i(360, 800), Vector2i(390, 844), Vector2i(430, 932)]:
+		root.size = viewport_size
+		await process_frame
+		for scenario_index in range(6):
+			screen.enter_readability_review_for_test(scenario_index)
+			await process_frame
+			var layout := screen.get_layout_snapshot_for_test()
+			var suffix := "M5.0C scenario %d at %dx%d" % [scenario_index + 1, viewport_size.x, viewport_size.y]
+			_expect(float(layout.board_cell_size) >= 36.0, "%s keeps touch-safe board cells" % suffix)
+			_expect_equal(int(layout.sequence_count), expected_sequence[scenario_index], "%s keeps every action card visible" % suffix)
+			_expect(float(layout.action_button_height) >= 72.0, "%s keeps touch-safe action controls" % suffix)
+			screen.exit_readability_review_for_test()
+	root.size = Vector2i(390, 844)
+	await process_frame
 
 
 func _test_state_sync_clears_preview_cache() -> void:

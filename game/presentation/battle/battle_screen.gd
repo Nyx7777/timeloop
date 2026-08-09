@@ -4,6 +4,7 @@ extends Control
 const BattleBoardViewScript := preload("res://presentation/battle/battle_board_view.gd")
 const BattleEventPlayerScript := preload("res://presentation/battle/battle_event_player.gd")
 const EnemyIntentPresentationScript := preload("res://presentation/battle/enemy_intent_presentation.gd")
+const ReadabilityReviewFixturesScript := preload("res://presentation/battle/readability_review_fixtures.gd")
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
 const HUD_PANEL_TEXTURE := preload("res://assets/ui/m42c/hud_panel_top.png")
 const HINT_BAR_TEXTURE := preload("res://assets/ui/m42c/hint_bar_bg.png")
@@ -86,6 +87,16 @@ var _boss_build_review: Control
 var _boss_review_button: Button
 var _boss_review_active := false
 var _boss_review_return_level := 0
+var _readability_option: OptionButton
+var _readability_button: Button
+var _readability_details_label: Label
+var _readability_cover: Control
+var _readability_prompt_label: Label
+var _readability_answer_label: Label
+var _readability_timer: Timer
+var _readability_review_active := false
+var _readability_review_return_level := 0
+var _readability_scenario_index := 0
 
 var _busy := false
 var _action_mode: StringName = &"smart"
@@ -146,6 +157,7 @@ func _build_interface() -> void:
 	add_child(_event_player)
 
 	_build_debug_overlay()
+	_build_readability_cover()
 	_build_timeline_overlay()
 
 
@@ -435,6 +447,35 @@ func _build_debug_overlay() -> void:
 	_boss_review_button.pressed.connect(_on_boss_review_pressed)
 	content.add_child(_boss_review_button)
 
+	var readability_title := Label.new()
+	readability_title.text = "M5.0C · 2—3 秒无日志读图"
+	readability_title.add_theme_color_override("font_color", COLOR_GOLD)
+	content.add_child(readability_title)
+
+	_readability_option = OptionButton.new()
+	for scenario_index in range(ReadabilityReviewFixturesScript.count()):
+		var scenario := ReadabilityReviewFixturesScript.describe(scenario_index)
+		_readability_option.add_item(String(scenario.label))
+	_readability_option.item_selected.connect(_on_readability_scenario_selected)
+	content.add_child(_readability_option)
+
+	_readability_details_label = Label.new()
+	_readability_details_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_readability_details_label.add_theme_font_size_override("font_size", 12)
+	_readability_details_label.add_theme_color_override("font_color", Color("#cbd9ef"))
+	content.add_child(_readability_details_label)
+
+	_readability_button = Button.new()
+	_readability_button.text = "进入 M5.0C · 只读读图评审"
+	_readability_button.custom_minimum_size.y = 44.0
+	_readability_button.tooltip_text = "进入后关闭工具与日志；观察 2—3 秒，再回来对照问题和答案。"
+	_readability_button.add_theme_color_override("font_color", Color("#ffe1a6"))
+	_readability_button.add_theme_stylebox_override("normal", _panel_style(Color("#2b2514"), Color("#9a7435"), 1, 6, 8))
+	_readability_button.add_theme_stylebox_override("hover", _panel_style(Color("#403318"), COLOR_GOLD, 2, 6, 8))
+	_readability_button.pressed.connect(_on_readability_review_pressed)
+	content.add_child(_readability_button)
+	_refresh_readability_details()
+
 	var log_title := Label.new()
 	log_title.text = "战斗日志"
 	log_title.add_theme_color_override("font_color", COLOR_MUTED)
@@ -503,10 +544,94 @@ func _build_timeline_overlay() -> void:
 	content.add_child(_next_timeline_button)
 
 
+func _build_readability_cover() -> void:
+	_readability_cover = Control.new()
+	_readability_cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_readability_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_readability_cover.visible = false
+	add_child(_readability_cover)
+
+	var scrim := ColorRect.new()
+	scrim.color = Color(0.015, 0.025, 0.06, 0.96)
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_readability_cover.add_child(scrim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_readability_cover.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330.0, 300.0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color("#11192d"), COLOR_GOLD, 2, 12, 18))
+	center.add_child(panel)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 14)
+	panel.add_child(content)
+
+	var title := Label.new()
+	title.text = "3 秒读图结束"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 23)
+	title.add_theme_color_override("font_color", COLOR_GOLD)
+	content.add_child(title)
+
+	_readability_prompt_label = Label.new()
+	_readability_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_readability_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_readability_prompt_label.add_theme_font_size_override("font_size", 16)
+	_readability_prompt_label.add_theme_color_override("font_color", Color("#e7eefb"))
+	content.add_child(_readability_prompt_label)
+
+	_readability_answer_label = Label.new()
+	_readability_answer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_readability_answer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_readability_answer_label.add_theme_font_size_override("font_size", 13)
+	_readability_answer_label.add_theme_color_override("font_color", Color("#9eeeff"))
+	_readability_answer_label.visible = false
+	content.add_child(_readability_answer_label)
+
+	var reveal_button := Button.new()
+	reveal_button.text = "显示对照答案"
+	reveal_button.custom_minimum_size.y = 44.0
+	reveal_button.pressed.connect(_on_readability_reveal_pressed)
+	content.add_child(reveal_button)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	content.add_child(actions)
+	var replay_button := Button.new()
+	replay_button.text = "再看 3 秒"
+	replay_button.custom_minimum_size.y = 44.0
+	replay_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	replay_button.pressed.connect(_begin_readability_exposure)
+	actions.add_child(replay_button)
+	var exit_button := Button.new()
+	exit_button.text = "退出评审"
+	exit_button.custom_minimum_size.y = 44.0
+	exit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	exit_button.pressed.connect(_exit_readability_review)
+	actions.add_child(exit_button)
+
+	_readability_timer = Timer.new()
+	_readability_timer.one_shot = true
+	_readability_timer.wait_time = 3.0
+	_readability_timer.timeout.connect(_on_readability_exposure_finished)
+	add_child(_readability_timer)
+
+
 func _start_battle() -> void:
+	if _readability_timer != null:
+		_readability_timer.stop()
+	if _readability_cover != null:
+		_readability_cover.visible = false
 	_boss_review_active = false
+	_readability_review_active = false
 	_boss_build_review.visible = false
 	_boss_review_button.text = "进入 M5.0A · Boss + Build 评审态"
+	_readability_button.text = "进入 M5.0C · 只读读图评审"
 	var selected_index := _level_option.selected
 	var level_data: Dictionary = LEVELS[selected_index]
 	var level := load(level_data.path) as LevelDefinition
@@ -523,6 +648,10 @@ func _start_battle() -> void:
 
 
 func _enter_boss_build_review() -> void:
+	_readability_timer.stop()
+	_readability_cover.visible = false
+	_readability_review_active = false
+	_readability_button.text = "进入 M5.0C · 只读读图评审"
 	_boss_review_return_level = _level_option.selected
 	_level_option.select(5)
 	var level := load(LEVELS[5].path) as LevelDefinition
@@ -566,13 +695,34 @@ func _enter_boss_build_review() -> void:
 	_refresh_interface()
 
 
+func _enter_readability_review(scenario_index: int) -> void:
+	_readability_review_return_level = _level_option.selected
+	_readability_scenario_index = scenario_index
+	var scenario := ReadabilityReviewFixturesScript.describe(scenario_index)
+	_level_option.select(int(scenario.level_index))
+	var state := ReadabilityReviewFixturesScript.build_state(scenario_index)
+	_session = BattleSession.new(state)
+	_action_mode = &"smart"
+	_active_actor = state.player_id
+	_focused_enemy_id = &""
+	_boss_review_active = false
+	_readability_review_active = true
+	_boss_build_review.visible = bool(scenario.get("show_boss_rail", false))
+	_boss_review_button.text = "进入 M5.0A · Boss + Build 评审态"
+	_readability_button.text = "退出读图评审并返回原关卡"
+	_log.clear()
+	_board.sync_from_state(state)
+	_refresh_interface()
+	_begin_readability_exposure()
+
+
 func _on_level_selected(_index: int) -> void:
 	if not _busy:
 		_start_battle()
 
 
 func _on_move_pressed() -> void:
-	if _boss_review_active:
+	if _is_read_only_review():
 		_refresh_interface()
 		return
 	if _move_button.disabled:
@@ -582,7 +732,7 @@ func _on_move_pressed() -> void:
 
 
 func _on_attack_pressed() -> void:
-	if _boss_review_active:
+	if _is_read_only_review():
 		_refresh_interface()
 		return
 	if _attack_button.disabled:
@@ -592,7 +742,7 @@ func _on_attack_pressed() -> void:
 
 
 func _on_board_cell_clicked(cell: Vector2i) -> void:
-	if _busy or _boss_review_active or _session.state.phase != BattlePhase.PLAYER_INPUT:
+	if _busy or _is_read_only_review() or _session.state.phase != BattlePhase.PLAYER_INPUT:
 		return
 	var player := _session.state.get_unit(_session.state.player_id)
 	if player == null:
@@ -609,12 +759,12 @@ func _on_board_cell_clicked(cell: Vector2i) -> void:
 
 
 func _on_end_turn_pressed() -> void:
-	if not _busy and not _boss_review_active:
+	if not _busy and not _is_read_only_review():
 		_submit(BattleCommand.end_turn(_session.state.player_id))
 
 
 func _on_crystallize_pressed() -> void:
-	if not _busy and not _boss_review_active:
+	if not _busy and not _is_read_only_review():
 		_submit(BattleCommand.crystallize(_session.state.player_id))
 
 
@@ -641,6 +791,61 @@ func _on_boss_review_pressed() -> void:
 	_debug_overlay.visible = false
 
 
+func _on_readability_scenario_selected(index: int) -> void:
+	_readability_scenario_index = index
+	_refresh_readability_details()
+
+
+func _on_readability_review_pressed() -> void:
+	if _busy:
+		return
+	if _readability_review_active:
+		_level_option.select(_readability_review_return_level)
+		_start_battle()
+	else:
+		_enter_readability_review(_readability_option.selected)
+	_debug_overlay.visible = false
+
+
+func _begin_readability_exposure() -> void:
+	if not _readability_review_active:
+		return
+	_readability_cover.visible = false
+	_readability_answer_label.visible = false
+	_readability_timer.start()
+
+
+func _on_readability_exposure_finished() -> void:
+	if not _readability_review_active:
+		return
+	var scenario := ReadabilityReviewFixturesScript.describe(_readability_scenario_index)
+	_readability_prompt_label.text = String(scenario.prompt)
+	_readability_answer_label.text = "对照：%s" % String(scenario.answer)
+	_readability_answer_label.visible = false
+	_readability_cover.visible = true
+
+
+func _on_readability_reveal_pressed() -> void:
+	_readability_answer_label.visible = true
+
+
+func _exit_readability_review() -> void:
+	if not _readability_review_active:
+		return
+	_level_option.select(_readability_review_return_level)
+	_start_battle()
+
+
+func _refresh_readability_details() -> void:
+	if _readability_details_label == null:
+		return
+	_readability_details_label.text = "进入后只显示战场 3 秒并自动遮罩。\n遮罩后先作答，再显示对照答案。"
+
+
+func _is_read_only_review() -> bool:
+	return _boss_review_active or _readability_review_active
+
+
 func _on_speed_selected(index: int) -> void:
 	match index:
 		0:
@@ -661,7 +866,7 @@ func _close_debug_overlay() -> void:
 
 
 func _submit(command: BattleCommand) -> void:
-	if _busy or _boss_review_active:
+	if _busy or _is_read_only_review():
 		return
 	var result := _session.submit(command)
 	if not result.accepted:
@@ -734,6 +939,23 @@ func exit_boss_build_review_for_test() -> void:
 		return
 	_level_option.select(_boss_review_return_level)
 	_start_battle()
+
+
+func enter_readability_review_for_test(scenario_index: int) -> void:
+	_enter_readability_review(scenario_index)
+
+
+func exit_readability_review_for_test() -> void:
+	_exit_readability_review()
+
+
+func finish_readability_exposure_for_test() -> void:
+	_readability_timer.stop()
+	_on_readability_exposure_finished()
+
+
+func reveal_readability_answer_for_test() -> void:
+	_on_readability_reveal_pressed()
 
 
 func get_state_snapshot_for_test() -> Dictionary:
@@ -809,6 +1031,13 @@ func get_ui_snapshot_for_test() -> Dictionary:
 		"boss_build_review_visible": _boss_build_review.visible,
 		"boss_build_review_mode": _boss_review_active,
 		"boss_review_button_text": _boss_review_button.text,
+		"readability_review_mode": _readability_review_active,
+		"readability_scenario_index": _readability_scenario_index,
+		"readability_review_button_text": _readability_button.text,
+		"readability_review_details": _readability_details_label.text,
+		"readability_cover_visible": _readability_cover.visible,
+		"readability_answer_visible": _readability_answer_label.visible,
+		"readability_prompt_text": _readability_prompt_label.text,
 		"debug_overlay_visible": _debug_overlay.visible,
 		"busy": _busy,
 	}
@@ -836,7 +1065,7 @@ func _refresh_interface() -> void:
 	if not _busy:
 		_sync_enemy_intent_presentations(state)
 
-	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
+	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy and not _is_read_only_review()
 	var reachable: Array[Vector2i] = []
 	var attackable: Array[Vector2i] = []
 	var push_previews: Array = []
