@@ -3,6 +3,7 @@ extends Control
 
 const BattleBoardViewScript := preload("res://presentation/battle/battle_board_view.gd")
 const BattleEventPlayerScript := preload("res://presentation/battle/battle_event_player.gd")
+const EnemyIntentPresentationScript := preload("res://presentation/battle/enemy_intent_presentation.gd")
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
 const HUD_PANEL_TEXTURE := preload("res://assets/ui/m42c/hud_panel_top.png")
 const HINT_BAR_TEXTURE := preload("res://assets/ui/m42c/hint_bar_bg.png")
@@ -89,6 +90,7 @@ var _boss_review_return_level := 0
 var _busy := false
 var _action_mode: StringName = &"smart"
 var _active_actor: StringName = &""
+var _focused_enemy_id: StringName = &""
 
 
 func _ready() -> void:
@@ -512,6 +514,7 @@ func _start_battle() -> void:
 	_session = BattleSession.new(state)
 	_action_mode = &"smart"
 	_active_actor = state.player_id
+	_focused_enemy_id = &""
 	_board.sync_from_state(_session.state)
 	_mission_label.text = "%d. %s\n%s\n%s" % [level_data.number, level.display_name, level.briefing, level.hint]
 	_log.clear()
@@ -552,6 +555,7 @@ func _enter_boss_build_review() -> void:
 	_session = BattleSession.new(state)
 	_action_mode = &"attack"
 	_active_actor = state.player_id
+	_focused_enemy_id = &""
 	_boss_review_active = true
 	_boss_build_review.visible = true
 	_boss_review_button.text = "退出评审态并返回原关卡"
@@ -695,6 +699,7 @@ func set_state_for_test(state: BattleState) -> void:
 	_session = BattleSession.new(BattleState.from_dict(state.to_dict()))
 	_action_mode = &"smart"
 	_active_actor = _session.state.player_id
+	_focused_enemy_id = &""
 	_board.sync_from_state(_session.state)
 	_refresh_interface()
 
@@ -702,6 +707,10 @@ func set_state_for_test(state: BattleState) -> void:
 func set_action_mode_for_test(mode: StringName) -> void:
 	_action_mode = mode
 	_refresh_interface()
+
+
+func focus_enemy_for_test(enemy_id: StringName) -> void:
+	_set_focused_enemy(enemy_id)
 
 
 func open_debug_overlay_for_test() -> void:
@@ -765,6 +774,8 @@ func get_ui_snapshot_for_test() -> Dictionary:
 		"awake_text": _awake_label.text,
 		"sequence_temporal_states": _sequence_temporal_snapshot(),
 		"sequence_portrait_modes": _sequence_portrait_snapshot(),
+		"sequence_focus_states": _sequence_focus_snapshot(),
+		"focused_enemy_id": _focused_enemy_id,
 		"next_timeline_visible": _timeline_overlay.visible,
 		"end_turn_disabled": _end_turn_button.disabled,
 		"crystallize_visible": _crystallize_button.visible,
@@ -820,7 +831,10 @@ func _refresh_interface() -> void:
 	_awake_label.modulate = Color.WHITE if int(temporal_counts.awake) > 0 else Color(1.0, 1.0, 1.0, 0.48)
 	_fixed_icon.modulate = _fixed_label.modulate
 	_awake_icon.modulate = _awake_label.modulate
+	_validate_focused_enemy(state)
 	_refresh_sequence_bar(state)
+	if not _busy:
+		_sync_enemy_intent_presentations(state)
 
 	var player_input := state.phase == BattlePhase.PLAYER_INPUT and not _busy
 	var reachable: Array[Vector2i] = []
@@ -875,6 +889,11 @@ func _refresh_interface() -> void:
 		_instruction_label.text = "战斗胜利！" if state.battle_outcome == &"victory" else "战斗失败。"
 	elif _busy:
 		_instruction_label.text = "时间正在结算……"
+	elif _first_pending_enemy(state) != &"":
+		var pending_id := _first_pending_enemy(state)
+		var pending_label := String(EnemyIntentPresentationScript.enemy_labels(state).get(pending_id, pending_id))
+		var pending_unit := state.get_unit(pending_id)
+		_instruction_label.text = "%s 已扰动·本回合仍锁定；回合 %d 起清醒。" % [pending_label, int(pending_unit.statuses.get("awake_from_turn", state.turn_index + 1))]
 	elif _move_focus_ring.visible:
 		_instruction_label.text = "第一步：点击移动，再选择青色格。"
 	elif _action_mode == &"move":
@@ -907,12 +926,11 @@ func _refresh_sequence_bar(state: BattleState) -> void:
 	var player_active := state.phase == BattlePhase.PLAYER_INPUT and not _busy
 	_sequence_row.add_child(_sequence_chip("本体", COLOR_CYAN, player_active or _active_actor == state.player_id, PLAYER_PORTRAIT_TEXTURE))
 
-	var enemy_index := 0
+	var enemy_labels: Dictionary = EnemyIntentPresentationScript.enemy_labels(state)
 	for unit_id in state.unit_order:
 		var unit := state.get_unit(unit_id)
 		if unit == null or not unit.active or unit.team != &"enemy":
 			continue
-		enemy_index += 1
 		var temporal_status := _enemy_temporal_status(state, unit)
 		var status_text := ""
 		var status_color := COLOR_RED
@@ -927,12 +945,13 @@ func _refresh_sequence_bar(state: BattleState) -> void:
 				status_text = "醒"
 				status_color = COLOR_GOLD
 		_sequence_row.add_child(_sequence_chip(
-			"E%d" % enemy_index,
+			String(enemy_labels.get(unit_id, "?")),
 			status_color if temporal_status != &"unknown" else COLOR_RED,
-			unit_id == _active_actor,
+			unit_id == _active_actor or unit_id == _focused_enemy_id,
 			ENEMY_PORTRAIT_TEXTURE,
 			status_text,
-			status_color
+			status_color,
+			unit_id
 		))
 
 
@@ -986,6 +1005,12 @@ func _on_event_started(event: BattleEvent) -> void:
 	if event.actor_id != &"":
 		_active_actor = event.actor_id
 		_refresh_sequence_bar(_session.state)
+	if event.event_type == &"turn_started":
+		_sync_enemy_intent_presentations(_session.state)
+	elif event.event_type == &"enemy_disturbed":
+		_sync_enemy_intent_presentations(_session.state)
+		var label := String(EnemyIntentPresentationScript.enemy_labels(_session.state).get(event.actor_id, event.actor_id))
+		_instruction_label.text = "%s 已扰动·本回合行为仍已锁定" % label
 
 
 func _on_event_finished(event: BattleEvent) -> void:
@@ -1228,17 +1253,30 @@ func _sequence_chip(
 	active: bool,
 	portrait_texture: Texture2D,
 	status_text := "",
-	status_color := COLOR_MUTED
+	status_color := COLOR_MUTED,
+	enemy_id: StringName = &""
 ) -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.custom_minimum_size = Vector2(44.0, 66.0)
 	chip.set_meta("unit_label", text_value)
 	chip.set_meta("temporal_status", status_text)
+	chip.set_meta("enemy_id", enemy_id)
+	chip.set_meta("focused", enemy_id != &"" and enemy_id == _focused_enemy_id)
 	var chip_tint := Color(1.14, 1.14, 1.14, 1.0) if active else Color.WHITE
+	if status_text == "醒":
+		chip_tint *= Color(1.12, 1.02, 0.70, 1.0)
+	elif status_text == "待醒":
+		chip_tint *= Color(1.10, 0.76, 0.96, 1.0)
 	chip.add_theme_stylebox_override("panel", _texture_style(SEQUENCE_ACTIVE_TEXTURE if active else SEQUENCE_INACTIVE_TEXTURE, 8.0, 3.0, chip_tint))
+	if enemy_id != &"":
+		chip.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		chip.mouse_filter = Control.MOUSE_FILTER_STOP
+		chip.tooltip_text = "点击聚焦 %s 的时间意图；再次点击取消" % text_value
+		chip.gui_input.connect(_on_sequence_chip_input.bind(enemy_id))
 
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", -1)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip.add_child(content)
 
 	var portrait := TextureRect.new()
@@ -1247,6 +1285,7 @@ func _sequence_chip(
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	portrait.modulate = Color.WHITE if active else Color(0.86, 0.90, 1.0, 0.90)
 	chip.set_meta("portrait_mode", "upper_body")
 	content.add_child(portrait)
@@ -1254,6 +1293,7 @@ func _sequence_chip(
 	var footer := HBoxContainer.new()
 	footer.alignment = BoxContainer.ALIGNMENT_CENTER
 	footer.add_theme_constant_override("separation", 2)
+	footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(footer)
 
 	var label := Label.new()
@@ -1262,6 +1302,7 @@ func _sequence_chip(
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", Color.WHITE if active else accent.lightened(0.05))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	footer.add_child(label)
 
 	if not status_text.is_empty():
@@ -1273,6 +1314,7 @@ func _sequence_chip(
 		status.add_theme_font_size_override("font_size", 9 if status_text.length() <= 1 else 8)
 		status.add_theme_color_override("font_color", status_color.lightened(0.12))
 		status.add_theme_stylebox_override("normal", _panel_style(Color(status_color, 0.12), status_color.darkened(0.08), 1, 4, 2))
+		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		footer.add_child(status)
 	return chip
 
@@ -1314,17 +1356,7 @@ func _enemy_temporal_counts(state: BattleState) -> Dictionary:
 
 
 func _enemy_temporal_status(state: BattleState, unit: UnitState) -> StringName:
-	var awake_from := int(unit.statuses.get("awake_from_turn", 0))
-	if awake_from > 0 and state.turn_index >= awake_from:
-		return &"awake"
-	if awake_from > state.turn_index and bool(unit.statuses.get("disturbed", false)):
-		return &"pending_awake"
-	for intent_data in state.locked_enemy_intents:
-		var intent: Dictionary = intent_data
-		if StringName(intent.get("enemy_id", &"")) != unit.unit_id:
-			continue
-		return &"awake" if bool(intent.get("reactive", false)) else &"fixed"
-	return &"unknown"
+	return EnemyIntentPresentationScript.temporal_status(state, unit)
 
 
 func _temporal_status_tooltip(status_text: String) -> String:
@@ -1357,6 +1389,52 @@ func _sequence_portrait_snapshot() -> Dictionary:
 			continue
 		snapshot[label] = String(child.get_meta("portrait_mode", ""))
 	return snapshot
+
+
+func _sequence_focus_snapshot() -> Dictionary:
+	var snapshot := {}
+	for child in _sequence_row.get_children():
+		var label := String(child.get_meta("unit_label", ""))
+		if label.is_empty():
+			continue
+		snapshot[label] = bool(child.get_meta("focused", false))
+	return snapshot
+
+
+func _on_sequence_chip_input(event: InputEvent, enemy_id: StringName) -> void:
+	var pressed := false
+	if event is InputEventMouseButton:
+		pressed = event.button_index == MOUSE_BUTTON_LEFT and event.pressed
+	elif event is InputEventScreenTouch:
+		pressed = event.pressed
+	if pressed and not _busy and not _boss_review_active:
+		_set_focused_enemy(enemy_id)
+
+
+func _set_focused_enemy(enemy_id: StringName) -> void:
+	_focused_enemy_id = &"" if _focused_enemy_id == enemy_id else enemy_id
+	_refresh_sequence_bar(_session.state)
+	_sync_enemy_intent_presentations(_session.state)
+
+
+func _validate_focused_enemy(state: BattleState) -> void:
+	if _focused_enemy_id == &"":
+		return
+	var unit := state.get_unit(_focused_enemy_id)
+	if unit == null or not unit.active or unit.team != &"enemy":
+		_focused_enemy_id = &""
+
+
+func _sync_enemy_intent_presentations(state: BattleState) -> void:
+	_validate_focused_enemy(state)
+	_board.set_enemy_intent_presentations(EnemyIntentPresentationScript.build(state, _focused_enemy_id))
+
+
+func _first_pending_enemy(state: BattleState) -> StringName:
+	for intent in EnemyIntentPresentationScript.build(state):
+		if intent.get("temporal_status", &"unknown") == &"pending_awake":
+			return StringName(intent.get("enemy_id", &""))
+	return &""
 
 
 func _texture_style(texture: Texture2D, texture_margin: float, content_margin: float, modulate := Color.WHITE) -> StyleBoxTexture:

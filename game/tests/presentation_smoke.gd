@@ -1,5 +1,7 @@
 extends SceneTree
 
+const EnemyIntentPresentationScript := preload("res://presentation/battle/enemy_intent_presentation.gd")
+
 var _failures: PackedStringArray = []
 var _checks := 0
 
@@ -11,6 +13,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_pixel_art_render_settings()
 	_test_high_density_battle_assets()
+	_test_enemy_intent_presentation_snapshots()
 	await _test_state_sync_clears_preview_cache()
 	await _test_touch_input_maps_to_grid()
 	await _test_event_driven_animation_states()
@@ -93,6 +96,23 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().sequence_portrait_modes.get("G1"), "upper_body", "command rail uses upper-body ghost portraits")
 
 	var known_state := BattleState.from_dict(state.to_dict())
+	var known_preview := screen.get_board_preview_snapshot_for_test()
+	_expect_equal(known_preview.enemy_intent_count, 1, "known time exposes one fixed enemy intent")
+	_expect_equal(known_preview.enemy_intents[0].label, "E1", "board intent identity matches the action sequence")
+	_expect(bool(known_preview.enemy_intents[0].show_locked_intent), "known enemy exposes its locked intent")
+	_expect_equal(known_preview.enemy_intents[0].attack_origin, known_preview.enemy_intents[0].destination, "enemy attack originates after its locked movement")
+	screen.focus_enemy_for_test(&"guard_01")
+	_expect_equal(screen.get_ui_snapshot_for_test().focused_enemy_id, &"guard_01", "clickable sequence focus stores the authoritative enemy id")
+	_expect(bool(screen.get_ui_snapshot_for_test().sequence_focus_states.get("E1", false)), "focused enemy card exposes its selected state")
+	_expect_equal(screen.get_board_preview_snapshot_for_test().focused_enemy_id, &"", "single-enemy focus does not pretend another intent was dimmed")
+	screen.focus_enemy_for_test(&"guard_01")
+	var pending_state := BattleState.from_dict(state.to_dict())
+	pending_state.get_unit(&"guard_01").statuses["disturbed"] = true
+	pending_state.get_unit(&"guard_01").statuses["awake_from_turn"] = pending_state.turn_index + 1
+	screen.set_state_for_test(pending_state)
+	_expect_equal(screen.get_ui_snapshot_for_test().sequence_temporal_states.get("E1"), "待醒", "disturbed enemy card shows the pending transition")
+	_expect_equal(screen.get_board_preview_snapshot_for_test().enemy_intent_count, 1, "pending enemy keeps the current locked intent visible")
+	_expect("本回合仍锁定" in String(screen.get_ui_snapshot_for_test().instruction), "pending feedback explains that the current intent remains locked")
 	var mixed_state := BattleState.from_dict(state.to_dict())
 	mixed_state.get_unit(&"guard_01").statuses["disturbed"] = true
 	mixed_state.get_unit(&"guard_01").statuses["awake_from_turn"] = mixed_state.turn_index
@@ -102,6 +122,10 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().fixed_text, "固定 0", "awake enemy leaves the fixed count")
 	_expect_equal(screen.get_ui_snapshot_for_test().awake_text, "清醒 1", "mixed command rail counts the awake enemy")
 	_expect_equal(screen.get_ui_snapshot_for_test().sequence_temporal_states.get("E1"), "醒", "awake enemy sequence card carries the awake tag")
+	_expect_equal(screen.get_board_preview_snapshot_for_test().enemy_intent_count, 0, "awake enemy hides all locked intent geometry")
+	_expect_equal(screen.get_board_preview_snapshot_for_test().awake_question_count, 1, "awake enemy uses a question marker")
+	_expect(not screen.get_board_preview_snapshot_for_test().enemy_intents[0].has("path"), "awake presentation snapshot does not leak a reactive path")
+	_expect(not screen.get_board_preview_snapshot_for_test().enemy_intents[0].has("attack_target"), "awake presentation snapshot does not leak a reactive target")
 	screen.set_state_for_test(known_state)
 
 	await screen.submit_command_for_test(BattleCommand.move(&"player", Vector2i(0, 5)))
@@ -111,7 +135,7 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().instruction, "战斗胜利！", "victory message is shown")
 	_expect(bool(screen.get_ui_snapshot_for_test().end_turn_disabled), "battle controls lock after victory")
 
-	_test_all_level_selection(screen)
+	await _test_all_level_selection(screen)
 	await _test_collision_course_screen(screen)
 
 	screen.queue_free()
@@ -133,6 +157,82 @@ func _test_pixel_art_render_settings() -> void:
 		bool(ProjectSettings.get_setting("rendering/2d/snap/snap_2d_vertices_to_pixel")),
 		"2D vertices snap to whole pixels"
 	)
+
+
+func _test_enemy_intent_presentation_snapshots() -> void:
+	var level := load("res://content/levels/falling_timeline.tres") as LevelDefinition
+	var state := BattleStateFactory.create_from_level(level, 20260809)
+	state.timeline_index = 2
+	state.turn_index = 1
+	state.time_state = &"disturbed"
+	state.locked_enemy_intents = [
+		{
+			"enemy_id": &"guard_01",
+			"from": Vector2i(1, 5),
+			"to": Vector2i(1, 4),
+			"path": [Vector2i(1, 5), Vector2i(1, 4)],
+			"target": Vector2i(0, 4),
+			"damage": 2,
+			"intent_type": &"move_attack",
+			"reactive": false,
+		},
+		{
+			"enemy_id": &"guard_02",
+			"from": Vector2i(3, 4),
+			"to": Vector2i(3, 4),
+			"path": [Vector2i(3, 4)],
+			"target": Vector2i(0, 7),
+			"damage": 2,
+			"intent_type": &"wait",
+			"reactive": false,
+		},
+		{
+			"enemy_id": &"guard_03",
+			"from": Vector2i(5, 2),
+			"to": Vector2i(5, 3),
+			"path": [Vector2i(5, 2), Vector2i(5, 3)],
+			"target": Vector2i(4, 3),
+			"damage": 2,
+			"intent_type": &"move_attack",
+			"reactive": false,
+		},
+		{
+			"enemy_id": &"guard_04",
+			"from": Vector2i(7, 5),
+			"to": Vector2i(7, 4),
+			"path": [Vector2i(7, 5), Vector2i(7, 4)],
+			"target": Vector2i(6, 4),
+			"damage": 2,
+			"intent_type": &"move_attack",
+			"reactive": true,
+		},
+	]
+	state.get_unit(&"guard_03").statuses["disturbed"] = true
+	state.get_unit(&"guard_03").statuses["awake_from_turn"] = 2
+	state.get_unit(&"guard_04").statuses["disturbed"] = true
+	state.get_unit(&"guard_04").statuses["awake_from_turn"] = 1
+
+	var snapshots := EnemyIntentPresentationScript.build(state, &"guard_02")
+	_expect_equal(snapshots.size(), 4, "intent presenter maps every active enemy")
+	_expect_equal(snapshots[0].label, "E1", "first enemy receives a stable E1 label")
+	_expect_equal(snapshots[1].label, "E2", "second enemy receives a stable E2 label")
+	_expect_equal(snapshots[0].path, [Vector2i(1, 5), Vector2i(1, 4)], "fixed intent preserves the complete movement path")
+	_expect_equal(snapshots[0].attack_origin, Vector2i(1, 4), "attack telegraph starts from the post-move endpoint")
+	_expect_equal(snapshots[0].attack_target, Vector2i(0, 4), "attack telegraph keeps the locked danger cell")
+	_expect_equal(snapshots[0].damage, 2, "attack telegraph exposes locked damage")
+	_expect(bool(snapshots[1].waiting), "wait intent is explicit presentation data")
+	_expect_equal(snapshots[0].opacity, 0.20, "focusing E2 dims other fixed intents")
+	_expect_equal(snapshots[1].opacity, 1.0, "focused intent keeps full opacity")
+	_expect_equal(snapshots[2].temporal_status, &"pending_awake", "disturbed enemy remains pending during the locked turn")
+	_expect(bool(snapshots[2].show_locked_intent), "pending enemy keeps its current locked intent visible")
+	_expect_equal(snapshots[3].temporal_status, &"awake", "wake turn promotes the enemy to awake")
+	_expect(bool(snapshots[3].show_question), "awake enemy exposes only the question marker")
+	_expect(not snapshots[3].has("path"), "awake snapshot strips reactive movement truth")
+	_expect(not snapshots[3].has("attack_target"), "awake snapshot strips reactive target truth")
+
+	state.get_unit(&"guard_01").active = false
+	var after_death := EnemyIntentPresentationScript.build(state)
+	_expect_equal(after_death[0].label, "E2", "surviving enemy keeps its original label after E1 dies")
 
 
 func _test_high_density_battle_assets() -> void:
@@ -200,20 +300,30 @@ func _test_collision_course_screen(screen: BattleScreen) -> void:
 
 func _test_all_level_selection(screen: BattleScreen) -> void:
 	var expected := [
-		{"id": &"first_echo", "holes": 0, "crystallize_enabled": false},
-		{"id": &"crossed_paths", "holes": 0, "crystallize_enabled": true},
-		{"id": &"purple_crossfire", "holes": 0, "crystallize_enabled": true},
-		{"id": &"push_calibration", "holes": 2, "crystallize_enabled": true},
-		{"id": &"collision_course", "holes": 3, "crystallize_enabled": true},
-		{"id": &"falling_timeline", "holes": 4, "crystallize_enabled": true},
+		{"id": &"first_echo", "holes": 0, "crystallize_enabled": false, "enemies": 1},
+		{"id": &"crossed_paths", "holes": 0, "crystallize_enabled": true, "enemies": 2},
+		{"id": &"purple_crossfire", "holes": 0, "crystallize_enabled": true, "enemies": 4},
+		{"id": &"push_calibration", "holes": 2, "crystallize_enabled": true, "enemies": 2},
+		{"id": &"collision_course", "holes": 3, "crystallize_enabled": true, "enemies": 3},
+		{"id": &"falling_timeline", "holes": 4, "crystallize_enabled": true, "enemies": 4},
 	]
-	for index in range(expected.size()):
-		screen.select_level_for_test(index)
-		var state := _state_from_screen(screen)
-		_expect_equal(state.level_id, expected[index].id, "selector loads level %d in order" % (index + 1))
-		_expect_equal(state.holes.size(), expected[index].holes, "level %d exposes expected holes" % (index + 1))
-		_expect(bool(screen.get_ui_snapshot_for_test().crystallize_visible), "level %d keeps the fixed crystallize slot visible" % (index + 1))
-		_expect_equal(screen.get_ui_snapshot_for_test().crystallize_disabled, not expected[index].crystallize_enabled, "level %d applies the crystallize rule by disabled state" % (index + 1))
+	for viewport_size in [Vector2i(360, 800), Vector2i(390, 844), Vector2i(430, 932)]:
+		root.size = viewport_size
+		await process_frame
+		for index in range(expected.size()):
+			screen.select_level_for_test(index)
+			await process_frame
+			var state := _state_from_screen(screen)
+			var suffix := "level %d at %dx%d" % [index + 1, viewport_size.x, viewport_size.y]
+			_expect_equal(state.level_id, expected[index].id, "%s loads in order" % suffix)
+			_expect_equal(state.holes.size(), expected[index].holes, "%s exposes expected holes" % suffix)
+			_expect(bool(screen.get_ui_snapshot_for_test().crystallize_visible), "%s keeps the fixed crystallize slot visible" % suffix)
+			_expect_equal(screen.get_ui_snapshot_for_test().crystallize_disabled, not expected[index].crystallize_enabled, "%s applies the crystallize rule" % suffix)
+			var layout := screen.get_layout_snapshot_for_test()
+			_expect(float(layout.board_cell_size) >= 36.0, "%s keeps touch-safe board cells" % suffix)
+			_expect_equal(layout.sequence_count, int(expected[index].enemies) + 1, "%s keeps every enemy action card visible" % suffix)
+	root.size = Vector2i(390, 844)
+	await process_frame
 
 
 func _test_mobile_layout(screen: BattleScreen) -> void:
@@ -328,6 +438,9 @@ func _test_event_driven_animation_states() -> void:
 	_expect_equal(animations[&"player"].last_completed_state, UnitAnimationState.COLLISION, "collision shakes the second unit")
 	_expect_equal(snapshot.floating_number_count, 0, "collision damage numbers clean up after playback")
 	_expect_equal(snapshot.impact_flash_count, 0, "collision flash cleans up after playback")
+
+	await board.play_event(BattleEvent.create(&"enemy_disturbed", &"guard_01", {"wake_turn": 2}), 0.0)
+	_expect_equal(board.get_preview_snapshot_for_test().last_disturbance_enemy, &"guard_01", "disturbance event drives the fracture-wave presentation")
 
 	await board.play_event(BattleEvent.create(&"timeline_crystallized", &"player"), 0.0)
 	animations = board.get_animation_snapshot_for_test().units

@@ -55,7 +55,10 @@ var _ghost_path_cells: Array[Vector2i] = []
 var _ghost_fire_cells: Array[Vector2i] = []
 var _enemy_move_cells: Array[Vector2i] = []
 var _enemy_attack_cells: Array[Vector2i] = []
+var _enemy_intent_presentations: Array[Dictionary] = []
 var _push_previews: Array = []
+var _disturbance_waves: Array[Dictionary] = []
+var _last_disturbance_enemy: StringName = &""
 var _hovered_cell := Vector2i(-1, -1)
 var _pulse_cell := Vector2i(-1, -1)
 var _interaction_enabled := false
@@ -89,6 +92,7 @@ func sync_from_state(state: BattleState) -> void:
 	_unit_animations.clear()
 	_floating_numbers.clear()
 	_impact_flashes.clear()
+	_disturbance_waves.clear()
 	_clear_all_previews()
 	_pulse_cell = Vector2i(-1, -1)
 	_hovered_cell = Vector2i(-1, -1)
@@ -112,6 +116,8 @@ func sync_from_state(state: BattleState) -> void:
 
 
 func get_preview_snapshot_for_test() -> Dictionary:
+	var visible_intents := _enemy_intent_presentations.filter(func(intent: Dictionary) -> bool: return bool(intent.get("show_locked_intent", false)))
+	var awake_markers := _enemy_intent_presentations.filter(func(intent: Dictionary) -> bool: return bool(intent.get("show_question", false)))
 	return {
 		"ghost_path_count": _ghost_path_cells.size(),
 		"ghost_fire_count": _ghost_fire_cells.size(),
@@ -119,6 +125,11 @@ func get_preview_snapshot_for_test() -> Dictionary:
 		"enemy_attack_count": _enemy_attack_cells.size(),
 		"push_preview_count": _push_previews.size(),
 		"push_collision_count": _push_previews.filter(func(preview: Dictionary) -> bool: return preview.get("outcome", &"") == &"collision").size(),
+		"enemy_intent_count": visible_intents.size(),
+		"enemy_intents": VariantCodec.deep_copy(_enemy_intent_presentations),
+		"awake_question_count": awake_markers.size(),
+		"focused_enemy_id": _focused_enemy_id(),
+		"last_disturbance_enemy": _last_disturbance_enemy,
 	}
 
 
@@ -160,6 +171,16 @@ func set_interaction(reachable: Array[Vector2i], attackable: Array[Vector2i], en
 	queue_redraw()
 
 
+func set_enemy_intent_presentations(presentations: Array[Dictionary]) -> void:
+	_enemy_intent_presentations.clear()
+	for presentation in presentations:
+		_enemy_intent_presentations.append(VariantCodec.deep_copy(presentation))
+	# State-driven M5.0B snapshots supersede the old endpoint-only event cache.
+	_enemy_move_cells.clear()
+	_enemy_attack_cells.clear()
+	queue_redraw()
+
+
 func play_event(event: BattleEvent, speed: float) -> void:
 	match event.event_type:
 		&"timeline_started":
@@ -178,8 +199,7 @@ func play_event(event: BattleEvent, speed: float) -> void:
 		&"units_collided":
 			await _play_collision(event, speed)
 		&"enemy_disturbed":
-			_apply_disturbed(event.actor_id)
-			await _wait(0.08, speed)
+			await _play_disturbance(event, speed)
 		&"attack_performed":
 			await _play_attack(event, speed)
 		&"damage_applied":
@@ -216,6 +236,7 @@ func _draw() -> void:
 	_draw_board()
 	_draw_overlays()
 	_draw_units()
+	_draw_intent_badges()
 	_draw_effects()
 
 
@@ -256,10 +277,14 @@ func _draw_wall(cell: Vector2i) -> void:
 func _draw_overlays() -> void:
 	for cell in _ghost_path_cells:
 		draw_rect(_cell_rect(cell).grow(-1.0), COLOR_GHOST_PATH, true)
-	for cell in _enemy_attack_cells:
-		draw_rect(_cell_rect(cell).grow(-1.0), Color(COLOR_ENEMY_ATTACK, 0.24), true)
-	for cell in _enemy_move_cells:
-		_draw_cell_outline(cell, COLOR_ENEMY_MOVE, 2.5)
+	if _enemy_intent_presentations.is_empty():
+		for cell in _enemy_attack_cells:
+			draw_rect(_cell_rect(cell).grow(-1.0), Color(COLOR_ENEMY_ATTACK, 0.24), true)
+		for cell in _enemy_move_cells:
+			_draw_cell_outline(cell, COLOR_ENEMY_MOVE, 2.5)
+	else:
+		for intent in _enemy_intent_presentations:
+			_draw_enemy_intent(intent)
 	for cell in _ghost_fire_cells:
 		_draw_cell_outline(cell, COLOR_GHOST_FIRE, 3.2)
 	for cell in _reachable:
@@ -278,13 +303,135 @@ func _draw_overlays() -> void:
 		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), marker, 17, color)
 	for cell in _ghost_fire_cells:
 		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "G!", 13, COLOR_GHOST_FIRE)
-	for cell in _enemy_attack_cells:
-		_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "!", 16, COLOR_ENEMY_ATTACK)
+	if _enemy_intent_presentations.is_empty():
+		for cell in _enemy_attack_cells:
+			_draw_centered_text(grid_to_local(cell) + Vector2(0.0, 5.0), "!", 16, COLOR_ENEMY_ATTACK)
 	if _is_in_bounds(_hovered_cell):
 		var hover_color := Color(1.0, 1.0, 1.0, 0.65) if _interaction_enabled else Color(0.7, 0.7, 0.7, 0.25)
 		draw_rect(_cell_rect(_hovered_cell).grow(-1.0), hover_color, false, 2.5)
 	if _is_in_bounds(_pulse_cell):
 		draw_rect(_cell_rect(_pulse_cell).grow(-1.0), Color(1.0, 0.88, 0.45, 0.55), true)
+
+
+func _draw_enemy_intent(intent: Dictionary) -> void:
+	var opacity := float(intent.get("opacity", 1.0))
+	var position: Vector2i = intent.get("position", Vector2i(-1, -1))
+	if bool(intent.get("show_question", false)):
+		return
+	if not bool(intent.get("show_locked_intent", false)):
+		return
+
+	var path: Array = intent.get("path", [])
+	var path_color := Color(COLOR_ENEMY_MOVE, opacity)
+	for path_index in range(1, path.size()):
+		var from_cell: Vector2i = path[path_index - 1]
+		var to_cell: Vector2i = path[path_index]
+		if not _is_in_bounds(from_cell) or not _is_in_bounds(to_cell):
+			continue
+		_draw_dashed_segment(grid_to_local(from_cell), grid_to_local(to_cell), path_color, maxf(2.0, _cell_size() * 0.065))
+		_draw_direction_tip(grid_to_local(from_cell), grid_to_local(to_cell), path_color)
+
+	var destination: Vector2i = intent.get("destination", position)
+	if _is_in_bounds(destination):
+		var destination_center := grid_to_local(destination)
+		draw_circle(destination_center, _cell_size() * 0.19, Color(COLOR_ENEMY_MOVE, 0.12 * opacity))
+		draw_circle(destination_center, _cell_size() * 0.19, path_color, false, maxf(2.0, _cell_size() * 0.055), true)
+
+	var intent_type: StringName = intent.get("intent_type", &"wait")
+	if intent_type == &"attack" or intent_type == &"move_attack":
+		var attack_origin: Vector2i = intent.get("attack_origin", destination)
+		var attack_target: Vector2i = intent.get("attack_target", Vector2i(-1, -1))
+		if _is_in_bounds(attack_origin) and _is_in_bounds(attack_target):
+			var attack_color := Color(COLOR_ENEMY_ATTACK, opacity)
+			_draw_dashed_segment(grid_to_local(attack_origin), grid_to_local(attack_target), attack_color, maxf(2.2, _cell_size() * 0.075), 0.13)
+			_draw_direction_tip(grid_to_local(attack_origin), grid_to_local(attack_target), attack_color)
+			var danger_rect := _cell_rect(attack_target).grow(-2.0)
+			draw_rect(danger_rect, Color(COLOR_ENEMY_ATTACK, 0.20 * opacity), true)
+			draw_rect(danger_rect, attack_color, false, maxf(2.0, _cell_size() * 0.06))
+
+
+func _draw_intent_badges() -> void:
+	for intent in _enemy_intent_presentations:
+		var opacity := float(intent.get("opacity", 1.0))
+		var position: Vector2i = intent.get("position", Vector2i(-1, -1))
+		if bool(intent.get("show_question", false)) and _is_in_bounds(position):
+			_draw_intent_badge(
+				grid_to_local(position) + Vector2(_cell_size() * 0.32, -_cell_size() * 0.34),
+				"?",
+				Color(COLOR_ENEMY_MOVE, opacity),
+				17
+			)
+			continue
+		if not bool(intent.get("show_locked_intent", false)):
+			continue
+		var destination: Vector2i = intent.get("destination", position)
+		if _is_in_bounds(destination):
+			_draw_intent_badge(
+				grid_to_local(destination) + Vector2(-_cell_size() * 0.31, -_cell_size() * 0.34),
+				String(intent.get("label", "?")),
+				Color(COLOR_ENEMY_MOVE, opacity),
+				10
+			)
+		var intent_type: StringName = intent.get("intent_type", &"wait")
+		if intent_type == &"attack" or intent_type == &"move_attack":
+			var target: Vector2i = intent.get("attack_target", Vector2i(-1, -1))
+			if _is_in_bounds(target):
+				_draw_intent_badge(
+					grid_to_local(target) + Vector2(_cell_size() * 0.25, _cell_size() * 0.31),
+					"%d伤" % int(intent.get("damage", 0)),
+					Color(COLOR_ENEMY_ATTACK, opacity),
+					10
+				)
+		elif bool(intent.get("waiting", false)) and _is_in_bounds(destination):
+			_draw_intent_badge(
+				grid_to_local(destination) + Vector2(0.0, _cell_size() * 0.31),
+				"等待",
+				Color(COLOR_ENEMY_MOVE, opacity),
+				9
+			)
+		if intent.get("temporal_status", &"unknown") == &"pending_awake" and _is_in_bounds(position):
+			_draw_intent_badge(
+				grid_to_local(position) + Vector2(_cell_size() * 0.28, -_cell_size() * 0.34),
+				"待醒",
+				Color(Color("#ff8fc7"), opacity),
+				9
+			)
+
+
+func _draw_intent_badge(center: Vector2, text: String, color: Color, font_size: int) -> void:
+	var font := ThemeDB.fallback_font
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var badge_size := Vector2(maxf(18.0, text_size.x + 8.0), maxf(16.0, text_size.y + 4.0))
+	var badge_rect := Rect2(center - badge_size * 0.5, badge_size)
+	draw_rect(badge_rect, Color(0.025, 0.035, 0.07, 0.88 * color.a), true)
+	draw_rect(badge_rect, color, false, 1.5)
+	_draw_centered_text(center + Vector2(0.0, 1.0), text, font_size, color.lightened(0.12))
+
+
+func _draw_dashed_segment(from: Vector2, to: Vector2, color: Color, width: float, dash_ratio := 0.18) -> void:
+	var distance := from.distance_to(to)
+	if distance <= 0.01:
+		return
+	var direction := (to - from) / distance
+	var dash_length := maxf(4.0, _cell_size() * dash_ratio)
+	var gap_length := maxf(3.0, dash_length * 0.60)
+	var cursor := 0.0
+	while cursor < distance:
+		var dash_end := minf(cursor + dash_length, distance)
+		draw_line(from + direction * cursor, from + direction * dash_end, color, width, true)
+		cursor += dash_length + gap_length
+
+
+func _draw_direction_tip(from: Vector2, to: Vector2, color: Color) -> void:
+	var delta := to - from
+	if delta.length_squared() <= 0.01:
+		return
+	var direction := delta.normalized()
+	var tip := to - direction * _cell_size() * 0.18
+	var wing := direction.rotated(PI * 0.5) * _cell_size() * 0.09
+	var back := direction * _cell_size() * 0.15
+	var points := PackedVector2Array([tip, tip - back + wing, tip - back - wing])
+	draw_colored_polygon(points, color)
 
 
 func _draw_units() -> void:
@@ -362,6 +509,18 @@ func _draw_effects() -> void:
 			var inner := center + Vector2.from_angle(angle) * radius * 0.45
 			var outer := center + Vector2.from_angle(angle) * radius
 			draw_line(inner, outer, Color(color, 0.95 * intensity), maxf(1.5, cell_size * 0.06))
+	for wave in _disturbance_waves:
+		var center: Vector2 = wave.get("position", Vector2.ZERO)
+		var progress := float(wave.get("progress", 0.0))
+		var alpha := 1.0 - progress
+		var radius := cell_size * lerpf(0.22, 0.86, progress)
+		draw_circle(center, radius, Color(Color("#ff8fc7"), alpha * 0.18), false, maxf(2.0, cell_size * 0.07), true)
+		draw_circle(center, radius * 0.68, Color(Color("#e9b95f"), alpha * 0.34), false, maxf(1.0, cell_size * 0.035), true)
+		for shard_index in range(6):
+			var angle := float(shard_index) * TAU / 6.0 + progress * 0.35
+			var inner := center + Vector2.from_angle(angle) * radius * 0.55
+			var outer := center + Vector2.from_angle(angle + 0.16) * radius
+			draw_line(inner, outer, Color(Color("#ffb4dc"), alpha * 0.82), maxf(1.0, cell_size * 0.04))
 	for number in _floating_numbers:
 		var position: Vector2 = number.get("position", Vector2.ZERO) + Vector2(0.0, float(number.get("rise", 0.0)))
 		var alpha := float(number.get("alpha", 1.0))
@@ -698,6 +857,33 @@ func _apply_disturbed(enemy_id: StringName) -> void:
 	queue_redraw()
 
 
+func _play_disturbance(event: BattleEvent, speed: float) -> void:
+	_apply_disturbed(event.actor_id)
+	_last_disturbance_enemy = event.actor_id
+	var wave := {
+		"position": _unit_screen_position(event.actor_id),
+		"progress": 0.0,
+	}
+	_disturbance_waves.append(wave)
+	var duration := _scaled_duration(0.46, speed)
+	if duration > 0.0:
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_QUAD)
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_method(_set_disturbance_progress.bind(wave), 0.0, 1.0, duration)
+		await tween.finished
+	else:
+		_set_disturbance_progress(1.0, wave)
+		await get_tree().process_frame
+	_disturbance_waves.erase(wave)
+	queue_redraw()
+
+
+func _set_disturbance_progress(progress: float, wave: Dictionary) -> void:
+	wave.progress = progress
+	queue_redraw()
+
+
 func _play_death(event: BattleEvent, speed: float) -> void:
 	var actor_id := event.actor_id
 	if not _display_units.has(actor_id):
@@ -818,6 +1004,7 @@ func _apply_phase_change(phase: StringName) -> void:
 	elif phase == BattlePhase.ENEMY_EXECUTION:
 		_enemy_move_cells.clear()
 		_enemy_attack_cells.clear()
+		_enemy_intent_presentations.clear()
 	elif phase == BattlePhase.TIMELINE_TRANSITION or phase == BattlePhase.BATTLE_OVER:
 		_clear_all_previews()
 	queue_redraw()
@@ -828,7 +1015,21 @@ func _clear_all_previews() -> void:
 	_ghost_fire_cells.clear()
 	_enemy_move_cells.clear()
 	_enemy_attack_cells.clear()
+	_enemy_intent_presentations.clear()
 	_push_previews.clear()
+
+
+func _focused_enemy_id() -> StringName:
+	for intent in _enemy_intent_presentations:
+		if bool(intent.get("focused", false)) and float(intent.get("opacity", 1.0)) >= 0.99:
+			var has_dimmed_peer := false
+			for peer in _enemy_intent_presentations:
+				if float(peer.get("opacity", 1.0)) < 0.99:
+					has_dimmed_peer = true
+					break
+			if has_dimmed_peer:
+				return StringName(intent.get("enemy_id", &""))
+	return &""
 
 
 func _append_unique(cells: Array[Vector2i], cell: Vector2i) -> void:
