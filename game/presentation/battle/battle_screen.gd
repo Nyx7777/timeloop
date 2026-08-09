@@ -17,6 +17,10 @@ const ICON_END_TURN_TEXTURE := preload("res://assets/ui/m50a/icon_end_turn.png")
 const ICON_FIXED_TEXTURE := preload("res://assets/ui/m50a/icon_fixed.png")
 const ICON_AWAKE_TEXTURE := preload("res://assets/ui/m50a/icon_awake.png")
 const ICON_LOCK_TEXTURE := preload("res://assets/ui/m50a/icon_lock.png")
+const BUTTON_FRAME_MOVE_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_move.png")
+const BUTTON_FRAME_ATTACK_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_attack.png")
+const BUTTON_FRAME_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_crystallize.png")
+const BUTTON_FRAME_END_TURN_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_end_turn.png")
 const SEQUENCE_ACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_active.png")
 const SEQUENCE_INACTIVE_TEXTURE := preload("res://assets/ui/m42c/sequence_frame_inactive.png")
 const PLAYER_PORTRAIT_TEXTURE := preload("res://assets/characters/player_idle.png")
@@ -71,9 +75,12 @@ var _restart_button: Button
 var _speed_option: OptionButton
 var _log: RichTextLabel
 var _debug_overlay: Control
-var _move_focus_ring: Panel
+var _move_focus_ring: NinePatchRect
 var _tutorial_focus_phase := 0.0
 var _boss_build_review: Control
+var _boss_review_button: Button
+var _boss_review_active := false
+var _boss_review_return_level := 0
 
 var _busy := false
 var _action_mode: StringName = &"smart"
@@ -322,22 +329,22 @@ func _build_action_area(parent: VBoxContainer) -> void:
 	actions.add_theme_constant_override("separation", 6)
 	content.add_child(actions)
 
-	_move_button = _action_button("移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE, ICON_MOVE_TEXTURE)
-	_move_focus_ring = _move_button.get_node("FocusRing") as Panel
+	_move_button = _action_button("移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE, ICON_MOVE_TEXTURE, BUTTON_FRAME_MOVE_TEXTURE)
+	_move_focus_ring = _move_button.get_node("FocusRing") as NinePatchRect
 	_move_button.toggle_mode = true
 	_move_button.pressed.connect(_on_move_pressed)
 	actions.add_child(_move_button)
 
-	_attack_button = _action_button("攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE, ICON_ATTACK_TEXTURE)
+	_attack_button = _action_button("攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE, ICON_ATTACK_TEXTURE, BUTTON_FRAME_ATTACK_TEXTURE)
 	_attack_button.toggle_mode = true
 	_attack_button.pressed.connect(_on_attack_pressed)
 	actions.add_child(_attack_button)
 
-	_crystallize_button = _action_button("固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE, ICON_CRYSTALLIZE_TEXTURE)
+	_crystallize_button = _action_button("固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE, ICON_CRYSTALLIZE_TEXTURE, BUTTON_FRAME_CRYSTALLIZE_TEXTURE)
 	_crystallize_button.pressed.connect(_on_crystallize_pressed)
 	actions.add_child(_crystallize_button)
 
-	_end_turn_button = _action_button("结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE, ICON_END_TURN_TEXTURE)
+	_end_turn_button = _action_button("结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE, ICON_END_TURN_TEXTURE, BUTTON_FRAME_END_TURN_TEXTURE)
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	actions.add_child(_end_turn_button)
 
@@ -412,6 +419,16 @@ func _build_debug_overlay() -> void:
 	_speed_option.item_selected.connect(_on_speed_selected)
 	tool_row.add_child(_speed_option)
 
+	_boss_review_button = Button.new()
+	_boss_review_button.text = "进入 M5.0A · Boss + Build 评审态"
+	_boss_review_button.custom_minimum_size.y = 46.0
+	_boss_review_button.tooltip_text = "仅用于检查最大信息量，不对应六关中的实际 Boss 关卡。"
+	_boss_review_button.add_theme_color_override("font_color", Color("#ffd6dc"))
+	_boss_review_button.add_theme_stylebox_override("normal", _panel_style(Color("#251425"), Color("#c64d68"), 1, 6, 8))
+	_boss_review_button.add_theme_stylebox_override("hover", _panel_style(Color("#3b1728"), Color("#ff7186"), 2, 6, 8))
+	_boss_review_button.pressed.connect(_on_boss_review_pressed)
+	content.add_child(_boss_review_button)
+
 	var log_title := Label.new()
 	log_title.text = "战斗日志"
 	log_title.add_theme_color_override("font_color", COLOR_MUTED)
@@ -481,6 +498,9 @@ func _build_timeline_overlay() -> void:
 
 
 func _start_battle() -> void:
+	_boss_review_active = false
+	_boss_build_review.visible = false
+	_boss_review_button.text = "进入 M5.0A · Boss + Build 评审态"
 	var selected_index := _level_option.selected
 	var level_data: Dictionary = LEVELS[selected_index]
 	var level := load(level_data.path) as LevelDefinition
@@ -495,12 +515,58 @@ func _start_battle() -> void:
 	_refresh_interface()
 
 
+func _enter_boss_build_review() -> void:
+	_boss_review_return_level = _level_option.selected
+	_level_option.select(5)
+	var level := load(LEVELS[5].path) as LevelDefinition
+	var state := BattleStateFactory.create_from_level(level, 20260802)
+	state.timeline_index = 3
+	state.lives_left = 1
+	state.turn_index = 6
+	state.time_state = &"disturbed"
+	state.ghost_positions = {
+		&"ghost_t1": Vector2i(0, 6),
+		&"ghost_t2": Vector2i(2, 6),
+	}
+	var player := state.get_unit(state.player_id)
+	player.position = Vector2i(0, 5)
+	player.has_moved = true
+	player.has_acted = false
+	state.locked_enemy_intents.clear()
+	var enemy_index := 0
+	for unit_id in state.unit_order:
+		var unit := state.get_unit(unit_id)
+		if unit == null or unit.team != &"enemy":
+			continue
+		enemy_index += 1
+		var reactive := enemy_index == 4
+		state.locked_enemy_intents.append({"enemy_id": unit_id, "reactive": reactive})
+		if reactive:
+			unit.statuses["disturbed"] = true
+			unit.statuses["awake_from_turn"] = state.turn_index
+
+	_session = BattleSession.new(state)
+	_action_mode = &"attack"
+	_active_actor = state.player_id
+	_boss_review_active = true
+	_boss_build_review.visible = true
+	_boss_review_button.text = "退出评审态并返回原关卡"
+	_mission_label.text = "M5.0A · Boss + Build 最大信息评审态\n仅检查 HUD 容量和视觉层级，不对应六关中的真实 Boss 玩法。"
+	_log.clear()
+	_append_log("[color=#ff9cad]已进入只读 Boss + Build 评审态。[/color]")
+	_board.sync_from_state(state)
+	_refresh_interface()
+
+
 func _on_level_selected(_index: int) -> void:
 	if not _busy:
 		_start_battle()
 
 
 func _on_move_pressed() -> void:
+	if _boss_review_active:
+		_refresh_interface()
+		return
 	if _move_button.disabled:
 		return
 	_action_mode = &"smart" if _action_mode == &"move" else &"move"
@@ -508,6 +574,9 @@ func _on_move_pressed() -> void:
 
 
 func _on_attack_pressed() -> void:
+	if _boss_review_active:
+		_refresh_interface()
+		return
 	if _attack_button.disabled:
 		return
 	_action_mode = &"smart" if _action_mode == &"attack" else &"attack"
@@ -515,7 +584,7 @@ func _on_attack_pressed() -> void:
 
 
 func _on_board_cell_clicked(cell: Vector2i) -> void:
-	if _busy or _session.state.phase != BattlePhase.PLAYER_INPUT:
+	if _busy or _boss_review_active or _session.state.phase != BattlePhase.PLAYER_INPUT:
 		return
 	var player := _session.state.get_unit(_session.state.player_id)
 	if player == null:
@@ -532,12 +601,12 @@ func _on_board_cell_clicked(cell: Vector2i) -> void:
 
 
 func _on_end_turn_pressed() -> void:
-	if not _busy:
+	if not _busy and not _boss_review_active:
 		_submit(BattleCommand.end_turn(_session.state.player_id))
 
 
 func _on_crystallize_pressed() -> void:
-	if not _busy:
+	if not _busy and not _boss_review_active:
 		_submit(BattleCommand.crystallize(_session.state.player_id))
 
 
@@ -550,6 +619,17 @@ func _on_restart_pressed() -> void:
 	if _busy:
 		return
 	_start_battle()
+	_debug_overlay.visible = false
+
+
+func _on_boss_review_pressed() -> void:
+	if _busy:
+		return
+	if _boss_review_active:
+		_level_option.select(_boss_review_return_level)
+		_start_battle()
+	else:
+		_enter_boss_build_review()
 	_debug_overlay.visible = false
 
 
@@ -573,7 +653,7 @@ func _close_debug_overlay() -> void:
 
 
 func _submit(command: BattleCommand) -> void:
-	if _busy:
+	if _busy or _boss_review_active:
 		return
 	var result := _session.submit(command)
 	if not result.accepted:
@@ -620,8 +700,27 @@ func set_action_mode_for_test(mode: StringName) -> void:
 	_refresh_interface()
 
 
+func open_debug_overlay_for_test() -> void:
+	_open_debug_overlay()
+
+
+func close_debug_overlay_for_test() -> void:
+	_close_debug_overlay()
+
+
 func set_boss_build_review_for_test(enabled: bool) -> void:
 	_boss_build_review.visible = enabled
+
+
+func enter_boss_build_review_for_test() -> void:
+	_enter_boss_build_review()
+
+
+func exit_boss_build_review_for_test() -> void:
+	if not _boss_review_active:
+		return
+	_level_option.select(_boss_review_return_level)
+	_start_battle()
 
 
 func get_state_snapshot_for_test() -> Dictionary:
@@ -678,7 +777,16 @@ func get_ui_snapshot_for_test() -> Dictionary:
 			"crystallize": _action_button_icon_path(_crystallize_button),
 			"end_turn": _action_button_icon_path(_end_turn_button),
 		},
+		"action_frames": {
+			"move": _action_button_frame_path(_move_button),
+			"attack": _action_button_frame_path(_attack_button),
+			"crystallize": _action_button_frame_path(_crystallize_button),
+			"end_turn": _action_button_frame_path(_end_turn_button),
+		},
 		"boss_build_review_visible": _boss_build_review.visible,
+		"boss_build_review_mode": _boss_review_active,
+		"boss_review_button_text": _boss_review_button.text,
+		"debug_overlay_visible": _debug_overlay.visible,
 		"busy": _busy,
 	}
 
@@ -921,7 +1029,13 @@ func _hud_label(text_value: String, color: Color, alignment: HorizontalAlignment
 	return label
 
 
-func _action_button(text_value: String, accent: Color, texture: Texture2D, icon_texture: Texture2D) -> Button:
+func _action_button(
+	text_value: String,
+	accent: Color,
+	texture: Texture2D,
+	icon_texture: Texture2D,
+	frame_texture: Texture2D
+) -> Button:
 	var button := Button.new()
 	button.custom_minimum_size = Vector2(72.0, 100.0)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -933,6 +1047,11 @@ func _action_button(text_value: String, accent: Color, texture: Texture2D, icon_
 	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 9.0, Color(1.26, 1.26, 1.26, 1.0)))
 	button.add_theme_stylebox_override("hover_pressed", _texture_style(texture, 10.0, 9.0, Color(1.34, 1.34, 1.34, 1.0)))
 	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.30, 0.32, 0.38, 0.78)))
+
+	var frame := _button_frame(frame_texture)
+	frame.name = "FrameGlow"
+	button.add_child(frame)
+	button.set_meta("frame_path", frame_texture.resource_path)
 
 	var icon := TextureRect.new()
 	icon.name = "Icon"
@@ -965,15 +1084,13 @@ func _action_button(text_value: String, accent: Color, texture: Texture2D, icon_
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(caption)
 
-	var focus_ring := Panel.new()
+	var focus_ring := _button_frame(frame_texture)
 	focus_ring.name = "FocusRing"
-	focus_ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	focus_ring.offset_left = -2.0
-	focus_ring.offset_top = -2.0
-	focus_ring.offset_right = 2.0
-	focus_ring.offset_bottom = 2.0
-	focus_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	focus_ring.add_theme_stylebox_override("panel", _panel_style(Color.TRANSPARENT, Color("#e9fbff"), 3, 9, 0))
+	focus_ring.offset_left = -5.0
+	focus_ring.offset_top = -5.0
+	focus_ring.offset_right = 5.0
+	focus_ring.offset_bottom = 5.0
+	focus_ring.modulate = Color(1.18, 1.18, 1.18, 0.70)
 	focus_ring.visible = false
 	button.add_child(focus_ring)
 	_set_action_button_content(button, text_value, icon_texture)
@@ -990,6 +1107,28 @@ func _set_action_button_content(button: Button, caption_text: String, icon_textu
 
 func _action_button_icon_path(button: Button) -> String:
 	return String(button.get_meta("icon_path", ""))
+
+
+func _action_button_frame_path(button: Button) -> String:
+	return String(button.get_meta("frame_path", ""))
+
+
+func _button_frame(texture: Texture2D) -> NinePatchRect:
+	var frame := NinePatchRect.new()
+	frame.texture = texture
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.offset_left = -3.0
+	frame.offset_top = -3.0
+	frame.offset_right = 3.0
+	frame.offset_bottom = 3.0
+	frame.patch_margin_left = 28
+	frame.patch_margin_top = 28
+	frame.patch_margin_right = 28
+	frame.patch_margin_bottom = 28
+	frame.draw_center = false
+	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return frame
 
 
 func _refresh_tutorial_focus(state: BattleState, player: UnitState, player_input: bool) -> void:
@@ -1013,8 +1152,16 @@ func _refresh_tutorial_focus(state: BattleState, player: UnitState, player_input
 		button.modulate = Color.WHITE if not tutorial_active or button == _move_button else Color(0.62, 0.68, 0.78, 0.58)
 		var icon := button.get_node("Icon") as TextureRect
 		var caption := button.get_node("Caption") as Label
+		var frame := button.get_node("FrameGlow") as NinePatchRect
+		var emphasized := button.button_pressed or (tutorial_active and button == _move_button)
 		icon.modulate = Color.WHITE if not button.disabled else Color(0.58, 0.62, 0.70, 0.38)
 		caption.modulate = Color.WHITE if not button.disabled else Color(0.68, 0.72, 0.80, 0.46)
+		if button.disabled:
+			frame.modulate = Color(0.48, 0.52, 0.62, 0.20)
+		elif emphasized:
+			frame.modulate = Color(1.18, 1.18, 1.18, 1.0)
+		else:
+			frame.modulate = Color(0.90, 0.94, 1.0, 0.80)
 
 
 func _icon_status_content(icon_texture: Texture2D, label: Label) -> HBoxContainer:

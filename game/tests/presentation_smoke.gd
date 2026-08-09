@@ -46,9 +46,21 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.attack, "res://assets/ui/m50a/icon_attack.png", "attack control uses a standalone icon asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.crystallize, "res://assets/ui/m50a/icon_lock.png", "locked crystallize control uses a standalone lock icon")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.end_turn, "res://assets/ui/m50a/icon_end_turn.png", "end-turn control uses a standalone icon asset")
-	screen.set_boss_build_review_for_test(true)
-	_expect(bool(screen.get_ui_snapshot_for_test().boss_build_review_visible), "maximum-information review can expose the boss and build rail")
-	screen.set_boss_build_review_for_test(false)
+	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.move, "res://assets/ui/m50a/button_frame_glow_move.png", "move control uses the luminous frame asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.attack, "res://assets/ui/m50a/button_frame_glow_attack.png", "attack control uses the luminous frame asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.crystallize, "res://assets/ui/m50a/button_frame_glow_crystallize.png", "crystallize control uses the luminous frame asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.end_turn, "res://assets/ui/m50a/button_frame_glow_end_turn.png", "end-turn control uses the luminous frame asset")
+	screen.open_debug_overlay_for_test()
+	_expect(bool(screen.get_ui_snapshot_for_test().debug_overlay_visible), "playtest menu exposes the review entry")
+	_expect_equal(screen.get_ui_snapshot_for_test().boss_review_button_text, "进入 M5.0A · Boss + Build 评审态", "playtest menu names the non-level review state explicitly")
+	screen.close_debug_overlay_for_test()
+	screen.enter_boss_build_review_for_test()
+	_expect(bool(screen.get_ui_snapshot_for_test().boss_build_review_visible), "maximum-information review exposes the boss and build rail")
+	_expect(bool(screen.get_ui_snapshot_for_test().boss_build_review_mode), "maximum-information review is a dedicated read-only mode")
+	_expect_equal(_state_from_screen(screen).timeline_index, 3, "review menu enters the T3 maximum-information fixture")
+	_expect_equal(screen.get_ui_snapshot_for_test().boss_review_button_text, "退出评审态并返回原关卡", "review menu exposes an explicit exit")
+	screen.exit_boss_build_review_for_test()
+	_expect(not bool(screen.get_ui_snapshot_for_test().boss_build_review_mode), "exiting review restores normal battle mode")
 	screen.set_action_mode_for_test(&"move")
 	_expect(bool(screen.get_ui_snapshot_for_test().move_selected), "move control exposes the persistent selected state")
 	_expect(not bool(screen.get_ui_snapshot_for_test().attack_selected), "selecting move leaves attack unselected")
@@ -133,6 +145,10 @@ func _test_high_density_battle_assets() -> void:
 		"res://assets/ui/m50a/icon_fixed.png": Vector2(128.0, 128.0),
 		"res://assets/ui/m50a/icon_awake.png": Vector2(128.0, 128.0),
 		"res://assets/ui/m50a/icon_lock.png": Vector2(128.0, 128.0),
+		"res://assets/ui/m50a/button_frame_glow_move.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_frame_glow_attack.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_frame_glow_crystallize.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_frame_glow_end_turn.png": Vector2(128.0, 160.0),
 	}
 	for path in expected_sizes:
 		var texture := load(path) as Texture2D

@@ -31,38 +31,13 @@ func _run() -> void:
 	# First-contact state: the move action receives a non-blocking tutorial focus.
 	screen.select_level_for_test(0)
 	await _capture("%s/m50a_tutorial_focus.png" % output_dir)
+	screen.open_debug_overlay_for_test()
+	await _capture("%s/m50a_boss_review_entry.png" % output_dir)
+	screen.close_debug_overlay_for_test()
 
 	# Maximum-information representative: T3, two ghosts, four enemies, mixed
 	# temporal states, an available attack, and the Boss + Build review rail.
-	screen.select_level_for_test(5)
-	var max_state := BattleState.from_dict(screen.get_state_snapshot_for_test())
-	max_state.timeline_index = 3
-	max_state.lives_left = 1
-	max_state.turn_index = 6
-	max_state.time_state = &"disturbed"
-	max_state.ghost_positions = {
-		&"ghost_t1": Vector2i(0, 6),
-		&"ghost_t2": Vector2i(2, 6),
-	}
-	var player := max_state.get_unit(max_state.player_id)
-	player.position = Vector2i(0, 5)
-	player.has_moved = true
-	player.has_acted = false
-	max_state.locked_enemy_intents.clear()
-	var enemy_index := 0
-	for unit_id in max_state.unit_order:
-		var unit := max_state.get_unit(unit_id)
-		if unit == null or unit.team != &"enemy":
-			continue
-		enemy_index += 1
-		var reactive := enemy_index == 4
-		max_state.locked_enemy_intents.append({"enemy_id": unit_id, "reactive": reactive})
-		if reactive:
-			unit.statuses["disturbed"] = true
-			unit.statuses["awake_from_turn"] = max_state.turn_index
-	screen.set_state_for_test(max_state)
-	screen.set_action_mode_for_test(&"attack")
-	screen.set_boss_build_review_for_test(true)
+	screen.enter_boss_build_review_for_test()
 	await _capture("%s/m50a_boss_build_max.png" % output_dir)
 
 	screen.queue_free()
