@@ -46,10 +46,11 @@ func _run() -> void:
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.attack, "res://assets/ui/m50a/icon_attack.png", "attack control uses a standalone icon asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.crystallize, "res://assets/ui/m50a/icon_lock.png", "locked crystallize control uses a standalone lock icon")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_icons.end_turn, "res://assets/ui/m50a/icon_end_turn.png", "end-turn control uses a standalone icon asset")
-	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.move, "res://assets/ui/m50a/button_frame_glow_move.png", "move control uses the luminous frame asset")
-	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.attack, "res://assets/ui/m50a/button_frame_glow_attack.png", "attack control uses the luminous frame asset")
-	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.crystallize, "res://assets/ui/m50a/button_frame_glow_crystallize.png", "crystallize control uses the luminous frame asset")
-	_expect_equal(screen.get_ui_snapshot_for_test().action_frames.end_turn, "res://assets/ui/m50a/button_frame_glow_end_turn.png", "end-turn control uses the luminous frame asset")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_plates.move.normal, "res://assets/ui/m50a/button_plate_move.png", "move control uses one coherent normal plate")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_plates.move.selected, "res://assets/ui/m50a/button_plate_selected_move.png", "move control uses a matching selected plate")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_plates.attack.normal, "res://assets/ui/m50a/button_plate_attack.png", "attack control uses one coherent normal plate")
+	_expect_equal(screen.get_ui_snapshot_for_test().action_plates.attack.selected, "res://assets/ui/m50a/button_plate_selected_attack.png", "attack control uses a matching selected plate")
+	_expect(not bool(screen.get_ui_snapshot_for_test().action_legacy_frame_visible), "action controls remove the obsolete outer-line frame layer")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.move, "res://assets/ui/m50a/button_inner_glow_move.png", "move control uses the restrained inner glow asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.attack, "res://assets/ui/m50a/button_inner_glow_attack.png", "attack control uses the restrained inner glow asset")
 	_expect_equal(screen.get_ui_snapshot_for_test().action_inner_glows.crystallize, "res://assets/ui/m50a/button_inner_glow_crystallize.png", "crystallize control uses the restrained inner glow asset")
@@ -158,6 +159,14 @@ func _test_high_density_battle_assets() -> void:
 		"res://assets/ui/m50a/button_inner_glow_attack.png": Vector2(128.0, 160.0),
 		"res://assets/ui/m50a/button_inner_glow_crystallize.png": Vector2(128.0, 160.0),
 		"res://assets/ui/m50a/button_inner_glow_end_turn.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_move.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_attack.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_crystallize.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_end_turn.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_selected_move.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_selected_attack.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_selected_crystallize.png": Vector2(128.0, 160.0),
+		"res://assets/ui/m50a/button_plate_selected_end_turn.png": Vector2(128.0, 160.0),
 	}
 	for path in expected_sizes:
 		var texture := load(path) as Texture2D

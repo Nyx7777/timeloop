@@ -6,10 +6,6 @@ const BattleEventPlayerScript := preload("res://presentation/battle/battle_event
 const DisplacementQueryScript := preload("res://core/queries/displacement_query.gd")
 const HUD_PANEL_TEXTURE := preload("res://assets/ui/m42c/hud_panel_top.png")
 const HINT_BAR_TEXTURE := preload("res://assets/ui/m42c/hint_bar_bg.png")
-const BUTTON_MOVE_TEXTURE := preload("res://assets/ui/m42c/button_move_9patch.png")
-const BUTTON_ATTACK_TEXTURE := preload("res://assets/ui/m42c/button_attack_9patch.png")
-const BUTTON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m42c/button_crystallize_9patch.png")
-const BUTTON_END_TURN_TEXTURE := preload("res://assets/ui/m42c/button_endturn_9patch.png")
 const ICON_MOVE_TEXTURE := preload("res://assets/ui/m50a/icon_move.png")
 const ICON_ATTACK_TEXTURE := preload("res://assets/ui/m50a/icon_attack.png")
 const ICON_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/icon_crystallize.png")
@@ -17,10 +13,14 @@ const ICON_END_TURN_TEXTURE := preload("res://assets/ui/m50a/icon_end_turn.png")
 const ICON_FIXED_TEXTURE := preload("res://assets/ui/m50a/icon_fixed.png")
 const ICON_AWAKE_TEXTURE := preload("res://assets/ui/m50a/icon_awake.png")
 const ICON_LOCK_TEXTURE := preload("res://assets/ui/m50a/icon_lock.png")
-const BUTTON_FRAME_MOVE_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_move.png")
-const BUTTON_FRAME_ATTACK_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_attack.png")
-const BUTTON_FRAME_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_crystallize.png")
-const BUTTON_FRAME_END_TURN_TEXTURE := preload("res://assets/ui/m50a/button_frame_glow_end_turn.png")
+const BUTTON_PLATE_MOVE_TEXTURE := preload("res://assets/ui/m50a/button_plate_move.png")
+const BUTTON_PLATE_ATTACK_TEXTURE := preload("res://assets/ui/m50a/button_plate_attack.png")
+const BUTTON_PLATE_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/button_plate_crystallize.png")
+const BUTTON_PLATE_END_TURN_TEXTURE := preload("res://assets/ui/m50a/button_plate_end_turn.png")
+const BUTTON_PLATE_SELECTED_MOVE_TEXTURE := preload("res://assets/ui/m50a/button_plate_selected_move.png")
+const BUTTON_PLATE_SELECTED_ATTACK_TEXTURE := preload("res://assets/ui/m50a/button_plate_selected_attack.png")
+const BUTTON_PLATE_SELECTED_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/button_plate_selected_crystallize.png")
+const BUTTON_PLATE_SELECTED_END_TURN_TEXTURE := preload("res://assets/ui/m50a/button_plate_selected_end_turn.png")
 const BUTTON_INNER_GLOW_MOVE_TEXTURE := preload("res://assets/ui/m50a/button_inner_glow_move.png")
 const BUTTON_INNER_GLOW_ATTACK_TEXTURE := preload("res://assets/ui/m50a/button_inner_glow_attack.png")
 const BUTTON_INNER_GLOW_CRYSTALLIZE_TEXTURE := preload("res://assets/ui/m50a/button_inner_glow_crystallize.png")
@@ -79,7 +79,7 @@ var _restart_button: Button
 var _speed_option: OptionButton
 var _log: RichTextLabel
 var _debug_overlay: Control
-var _move_focus_ring: NinePatchRect
+var _move_focus_ring: TextureRect
 var _tutorial_focus_phase := 0.0
 var _boss_build_review: Control
 var _boss_review_button: Button
@@ -101,7 +101,7 @@ func _process(delta: float) -> void:
 	if _move_focus_ring == null or not _move_focus_ring.visible:
 		return
 	_tutorial_focus_phase = fmod(_tutorial_focus_phase + delta * 3.6, TAU)
-	_move_focus_ring.modulate.a = 0.24 + sin(_tutorial_focus_phase) * 0.08
+	_move_focus_ring.modulate.a = 0.10 + sin(_tutorial_focus_phase) * 0.04
 
 
 func _build_interface() -> void:
@@ -333,22 +333,22 @@ func _build_action_area(parent: VBoxContainer) -> void:
 	actions.add_theme_constant_override("separation", 6)
 	content.add_child(actions)
 
-	_move_button = _action_button("移动", COLOR_CYAN, BUTTON_MOVE_TEXTURE, ICON_MOVE_TEXTURE, BUTTON_FRAME_MOVE_TEXTURE, BUTTON_INNER_GLOW_MOVE_TEXTURE)
-	_move_focus_ring = _move_button.get_node("FocusRing") as NinePatchRect
+	_move_button = _action_button("移动", COLOR_CYAN, ICON_MOVE_TEXTURE, BUTTON_PLATE_MOVE_TEXTURE, BUTTON_PLATE_SELECTED_MOVE_TEXTURE, BUTTON_INNER_GLOW_MOVE_TEXTURE)
+	_move_focus_ring = _move_button.get_node("FocusRing") as TextureRect
 	_move_button.toggle_mode = true
 	_move_button.pressed.connect(_on_move_pressed)
 	actions.add_child(_move_button)
 
-	_attack_button = _action_button("攻击", COLOR_RED, BUTTON_ATTACK_TEXTURE, ICON_ATTACK_TEXTURE, BUTTON_FRAME_ATTACK_TEXTURE, BUTTON_INNER_GLOW_ATTACK_TEXTURE)
+	_attack_button = _action_button("攻击", COLOR_RED, ICON_ATTACK_TEXTURE, BUTTON_PLATE_ATTACK_TEXTURE, BUTTON_PLATE_SELECTED_ATTACK_TEXTURE, BUTTON_INNER_GLOW_ATTACK_TEXTURE)
 	_attack_button.toggle_mode = true
 	_attack_button.pressed.connect(_on_attack_pressed)
 	actions.add_child(_attack_button)
 
-	_crystallize_button = _action_button("固化", COLOR_PURPLE, BUTTON_CRYSTALLIZE_TEXTURE, ICON_CRYSTALLIZE_TEXTURE, BUTTON_FRAME_CRYSTALLIZE_TEXTURE, BUTTON_INNER_GLOW_CRYSTALLIZE_TEXTURE)
+	_crystallize_button = _action_button("固化", COLOR_PURPLE, ICON_CRYSTALLIZE_TEXTURE, BUTTON_PLATE_CRYSTALLIZE_TEXTURE, BUTTON_PLATE_SELECTED_CRYSTALLIZE_TEXTURE, BUTTON_INNER_GLOW_CRYSTALLIZE_TEXTURE)
 	_crystallize_button.pressed.connect(_on_crystallize_pressed)
 	actions.add_child(_crystallize_button)
 
-	_end_turn_button = _action_button("结束", COLOR_GOLD, BUTTON_END_TURN_TEXTURE, ICON_END_TURN_TEXTURE, BUTTON_FRAME_END_TURN_TEXTURE, BUTTON_INNER_GLOW_END_TURN_TEXTURE)
+	_end_turn_button = _action_button("结束", COLOR_GOLD, ICON_END_TURN_TEXTURE, BUTTON_PLATE_END_TURN_TEXTURE, BUTTON_PLATE_SELECTED_END_TURN_TEXTURE, BUTTON_INNER_GLOW_END_TURN_TEXTURE)
 	_end_turn_button.pressed.connect(_on_end_turn_pressed)
 	actions.add_child(_end_turn_button)
 
@@ -781,12 +781,13 @@ func get_ui_snapshot_for_test() -> Dictionary:
 			"crystallize": _action_button_icon_path(_crystallize_button),
 			"end_turn": _action_button_icon_path(_end_turn_button),
 		},
-		"action_frames": {
-			"move": _action_button_frame_path(_move_button),
-			"attack": _action_button_frame_path(_attack_button),
-			"crystallize": _action_button_frame_path(_crystallize_button),
-			"end_turn": _action_button_frame_path(_end_turn_button),
+		"action_plates": {
+			"move": _action_button_plate_paths(_move_button),
+			"attack": _action_button_plate_paths(_attack_button),
+			"crystallize": _action_button_plate_paths(_crystallize_button),
+			"end_turn": _action_button_plate_paths(_end_turn_button),
 		},
+		"action_legacy_frame_visible": _move_button.has_node("FrameGlow"),
 		"action_inner_glows": {
 			"move": _action_button_inner_glow_path(_move_button),
 			"attack": _action_button_inner_glow_path(_attack_button),
@@ -1043,9 +1044,9 @@ func _hud_label(text_value: String, color: Color, alignment: HorizontalAlignment
 func _action_button(
 	text_value: String,
 	accent: Color,
-	texture: Texture2D,
 	icon_texture: Texture2D,
-	frame_texture: Texture2D,
+	plate_texture: Texture2D,
+	selected_plate_texture: Texture2D,
 	inner_glow_texture: Texture2D
 ) -> Button:
 	var button := Button.new()
@@ -1054,11 +1055,27 @@ func _action_button(
 	button.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_NONE
 	button.set_meta("accent", accent)
-	button.add_theme_stylebox_override("normal", _texture_style(texture, 10.0, 7.0))
-	button.add_theme_stylebox_override("hover", _texture_style(texture, 10.0, 7.0, Color(1.16, 1.16, 1.16, 1.0)))
-	button.add_theme_stylebox_override("pressed", _texture_style(texture, 10.0, 9.0, Color(1.26, 1.26, 1.26, 1.0)))
-	button.add_theme_stylebox_override("hover_pressed", _texture_style(texture, 10.0, 9.0, Color(1.34, 1.34, 1.34, 1.0)))
-	button.add_theme_stylebox_override("disabled", _texture_style(texture, 10.0, 7.0, Color(0.30, 0.32, 0.38, 0.78)))
+	var empty_style := StyleBoxEmpty.new()
+	for state_name in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		button.add_theme_stylebox_override(state_name, empty_style)
+
+	var plate := _button_plate(plate_texture)
+	plate.name = "Plate"
+	button.add_child(plate)
+	button.set_meta("plate_path", plate_texture.resource_path)
+	button.set_meta("selected_plate_path", selected_plate_texture.resource_path)
+	button.set_meta("plate_texture", plate_texture)
+	button.set_meta("selected_plate_texture", selected_plate_texture)
+
+	var focus_ring := _button_plate(selected_plate_texture)
+	focus_ring.name = "FocusRing"
+	focus_ring.offset_left = -1.0
+	focus_ring.offset_top = -1.0
+	focus_ring.offset_right = 1.0
+	focus_ring.offset_bottom = 1.0
+	focus_ring.modulate = Color(1.0, 1.0, 1.0, 0.10)
+	focus_ring.visible = false
+	button.add_child(focus_ring)
 
 	var inner_glow := TextureRect.new()
 	inner_glow.name = "InnerGlow"
@@ -1074,11 +1091,6 @@ func _action_button(
 	inner_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(inner_glow)
 	button.set_meta("inner_glow_path", inner_glow_texture.resource_path)
-
-	var frame := _button_frame(frame_texture)
-	frame.name = "FrameGlow"
-	button.add_child(frame)
-	button.set_meta("frame_path", frame_texture.resource_path)
 
 	var icon := TextureRect.new()
 	icon.name = "Icon"
@@ -1111,15 +1123,6 @@ func _action_button(
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(caption)
 
-	var focus_ring := _button_frame(frame_texture)
-	focus_ring.name = "FocusRing"
-	focus_ring.offset_left = -2.0
-	focus_ring.offset_top = -2.0
-	focus_ring.offset_right = 2.0
-	focus_ring.offset_bottom = 2.0
-	focus_ring.modulate = Color(1.0, 1.0, 1.0, 0.24)
-	focus_ring.visible = false
-	button.add_child(focus_ring)
 	_set_action_button_content(button, text_value, icon_texture)
 	return button
 
@@ -1136,26 +1139,26 @@ func _action_button_icon_path(button: Button) -> String:
 	return String(button.get_meta("icon_path", ""))
 
 
-func _action_button_frame_path(button: Button) -> String:
-	return String(button.get_meta("frame_path", ""))
+func _action_button_plate_paths(button: Button) -> Dictionary:
+	return {
+		"normal": String(button.get_meta("plate_path", "")),
+		"selected": String(button.get_meta("selected_plate_path", "")),
+	}
 
 
 func _action_button_inner_glow_path(button: Button) -> String:
 	return String(button.get_meta("inner_glow_path", ""))
 
 
-func _button_frame(texture: Texture2D) -> NinePatchRect:
-	var frame := NinePatchRect.new()
-	frame.texture = texture
-	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	frame.patch_margin_left = 22
-	frame.patch_margin_top = 22
-	frame.patch_margin_right = 22
-	frame.patch_margin_bottom = 22
-	frame.draw_center = false
-	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return frame
+func _button_plate(texture: Texture2D) -> TextureRect:
+	var plate := TextureRect.new()
+	plate.texture = texture
+	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	plate.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	plate.stretch_mode = TextureRect.STRETCH_SCALE
+	plate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return plate
 
 
 func _refresh_tutorial_focus(state: BattleState, player: UnitState, player_input: bool) -> void:
@@ -1172,27 +1175,28 @@ func _refresh_tutorial_focus(state: BattleState, player: UnitState, player_input
 	_move_focus_ring.visible = tutorial_active
 	if not tutorial_active:
 		_tutorial_focus_phase = 0.0
-		_move_focus_ring.modulate.a = 0.24
+		_move_focus_ring.modulate.a = 0.10
 
 	var buttons: Array[Button] = [_move_button, _attack_button, _crystallize_button, _end_turn_button]
 	for button in buttons:
 		button.modulate = Color.WHITE if not tutorial_active or button == _move_button else Color(0.62, 0.68, 0.78, 0.58)
 		var icon := button.get_node("Icon") as TextureRect
 		var caption := button.get_node("Caption") as Label
-		var frame := button.get_node("FrameGlow") as NinePatchRect
+		var plate := button.get_node("Plate") as TextureRect
 		var inner_glow := button.get_node("InnerGlow") as TextureRect
 		var emphasized := button.button_pressed or (tutorial_active and button == _move_button)
+		plate.texture = (button.get_meta("selected_plate_texture") as Texture2D) if emphasized else (button.get_meta("plate_texture") as Texture2D)
 		icon.modulate = Color.WHITE if not button.disabled else Color(0.58, 0.62, 0.70, 0.38)
 		caption.modulate = Color.WHITE if not button.disabled else Color(0.68, 0.72, 0.80, 0.46)
 		if button.disabled:
-			frame.modulate = Color(0.48, 0.52, 0.62, 0.22)
+			plate.modulate = Color(0.48, 0.52, 0.62, 1.0)
 			inner_glow.modulate = Color(0.56, 0.60, 0.68, 0.10)
 		elif emphasized:
-			frame.modulate = Color(1.03, 1.03, 1.03, 0.78)
-			inner_glow.modulate = Color(1.0, 1.0, 1.0, 0.52)
+			plate.modulate = Color(1.04, 1.04, 1.04, 1.0)
+			inner_glow.modulate = Color(1.0, 1.0, 1.0, 0.38)
 		else:
-			frame.modulate = Color(0.92, 0.96, 1.0, 0.58)
-			inner_glow.modulate = Color(1.0, 1.0, 1.0, 0.30)
+			plate.modulate = Color(0.92, 0.96, 1.0, 1.0)
+			inner_glow.modulate = Color(1.0, 1.0, 1.0, 0.20)
 
 
 func _icon_status_content(icon_texture: Texture2D, label: Label) -> HBoxContainer:
