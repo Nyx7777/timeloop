@@ -112,6 +112,7 @@ func _apply_end_turn(state: BattleState, command: BattleCommand) -> CommandResul
 	else:
 		intents = _compute_reactive_intents(state)
 		state.time_state = &"unknown"
+	_annotate_reconstruction_origins(state, intents)
 	state.current_enemy_history[state.turn_index] = VariantCodec.deep_copy(intents)
 	state.locked_enemy_intents = VariantCodec.deep_copy(intents)
 	events.append(BattleEvent.create(&"enemy_intents_locked", &"", {
@@ -316,6 +317,19 @@ func _find_intent_for_enemy(intents: Array, enemy_id: StringName) -> Dictionary:
 	return {}
 
 
+func _annotate_reconstruction_origins(state: BattleState, intents: Array) -> void:
+	# The current timeline may have established new spatial history before the
+	# enemy phase. A later timeline must reconstruct that position without
+	# treating the matching ghost replay as fresh interference. Keep the locked
+	# action's original `from` intact so its current-turn execution semantics do
+	# not change; this field is only the next timeline's comparison baseline.
+	for intent_data in intents:
+		var intent: Dictionary = intent_data
+		var enemy := state.get_unit(StringName(intent.get("enemy_id", &"")))
+		if enemy != null and enemy.active:
+			intent["reconstruction_origin"] = enemy.position
+
+
 func _has_reactive_intent(intents: Array) -> bool:
 	for intent_data in intents:
 		if bool((intent_data as Dictionary).get("reactive", false)):
@@ -459,6 +473,7 @@ func _handle_player_death(state: BattleState, cause: StringName, events: Array[B
 
 
 func _commit_current_timeline(state: BattleState, end_reason: StringName) -> void:
+	_capture_unresolved_turn_history(state)
 	var action_data: Array = []
 	for action in state.current_recording:
 		action_data.append(action.to_dict())
@@ -470,6 +485,14 @@ func _commit_current_timeline(state: BattleState, end_reason: StringName) -> voi
 	})
 	for turn_key in state.current_enemy_history.keys():
 		state.enemy_history[turn_key] = VariantCodec.deep_copy(state.current_enemy_history[turn_key])
+
+
+func _capture_unresolved_turn_history(state: BattleState) -> void:
+	if state.current_enemy_history.has(state.turn_index) or state.locked_enemy_intents.is_empty():
+		return
+	var intents: Array = VariantCodec.deep_copy(state.locked_enemy_intents)
+	_annotate_reconstruction_origins(state, intents)
+	state.current_enemy_history[state.turn_index] = intents
 
 
 func _restore_initial_units(state: BattleState) -> void:
@@ -613,7 +636,10 @@ func _mark_enemy_history_divergence_after_ghosts(state: BattleState, events: Arr
 				"actual_position": enemy.position,
 			})
 			continue
-		var expected_position: Vector2i = fixed_intent.get("from", enemy.position)
+		var expected_position: Vector2i = fixed_intent.get(
+			"reconstruction_origin",
+			fixed_intent.get("from", enemy.position)
+		)
 		if enemy.position != expected_position:
 			_mark_enemy_disturbed(state, enemy, events, &"history_diverged", {
 				"expected_position": expected_position,

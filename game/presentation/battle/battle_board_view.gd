@@ -365,13 +365,6 @@ func _draw_intent_badges() -> void:
 		if not bool(intent.get("show_locked_intent", false)):
 			continue
 		var destination: Vector2i = intent.get("destination", position)
-		if _is_in_bounds(destination):
-			_draw_intent_badge(
-				grid_to_local(destination) + Vector2(-_cell_size() * 0.31, -_cell_size() * 0.34),
-				String(intent.get("label", "?")),
-				Color(COLOR_ENEMY_MOVE, opacity),
-				10
-			)
 		var intent_type: StringName = intent.get("intent_type", &"wait")
 		if intent_type == &"attack" or intent_type == &"move_attack":
 			var target: Vector2i = intent.get("attack_target", Vector2i(-1, -1))

@@ -22,6 +22,8 @@ func _init() -> void:
 	_test_ghost_replays_collision_against_current_unit()
 	_test_matching_ghost_displacement_preserves_fixed_history()
 	_test_multiple_ghost_displacements_preserve_fixed_history()
+	_test_t3_replays_t2_displacement_without_new_disturbance()
+	_test_t3_replays_crystallized_t2_displacement_without_new_disturbance()
 	_test_divergent_ghost_replay_disturbs_enemy()
 	_test_fixed_history_collision_pushes_player()
 	_test_fixed_history_collision_into_hole_ends_timeline()
@@ -395,6 +397,72 @@ func _test_multiple_ghost_displacements_preserve_fixed_history() -> void:
 	_expect(not bool(session.state.locked_enemy_intents[0].reactive), "collective historical reconstruction keeps the enemy fixed")
 
 
+func _test_t3_replays_t2_displacement_without_new_disturbance() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.timeline_index = 2
+	state.lives_left = 2
+	state.rules["crystallize_enabled"] = true
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(1, 2), Vector2i(2, 2))]
+	state.locked_enemy_intents = VariantCodec.deep_copy(state.enemy_history[1])
+	state.time_state = &"known"
+	state.timeline_recordings = [{
+		"timeline_index": 1,
+		"end_turn": 2,
+		"end_reason": &"death",
+		"actions": [],
+	}]
+	var session := BattleSession.new(state)
+
+	var t2_attack := session.submit(BattleCommand.attack(&"player", Vector2i(1, 2)))
+	_expect(_has_event(t2_attack, &"enemy_disturbed"), "T2 current player displacement is new interference in T2")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 1), "T2 current player establishes the displaced position")
+	_expect(session.submit(BattleCommand.end_turn(&"player")).accepted, "T2 disturbed turn can finish")
+	_expect_equal(
+		session.state.current_enemy_history[1][0].get("reconstruction_origin", Vector2i.ZERO),
+		Vector2i(1, 1),
+		"T2 history records the actual pre-enemy reconstruction position"
+	)
+	_expect(session.submit(BattleCommand.crystallize(&"player")).accepted, "T2 displaced history can be committed")
+	var t3_start := session.submit(BattleCommand.start_next_timeline())
+
+	_expect(t3_start.accepted, "T3 starts with both T1 and T2 ghosts")
+	_expect_equal(session.state.timeline_index, 3, "successor timeline is T3")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 1), "T2 ghost reconstructs its established displacement in T3")
+	_expect(not _has_event(t3_start, &"enemy_disturbed"), "matching T2 ghost displacement does not wake the enemy again in T3")
+	_expect_equal(int(session.state.get_unit(&"guard").statuses.get("awake_from_turn", 0)), 0, "established T2 history stays fixed in T3")
+
+
+func _test_t3_replays_crystallized_t2_displacement_without_new_disturbance() -> void:
+	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
+	state.timeline_index = 2
+	state.lives_left = 2
+	state.rules["crystallize_enabled"] = true
+	state.enemy_history[1] = [_fixed_move_intent(Vector2i(1, 2), Vector2i(2, 2))]
+	state.locked_enemy_intents = VariantCodec.deep_copy(state.enemy_history[1])
+	state.time_state = &"known"
+	state.timeline_recordings = [{
+		"timeline_index": 1,
+		"end_turn": 1,
+		"end_reason": &"death",
+		"actions": [],
+	}]
+	var session := BattleSession.new(state)
+
+	_expect(session.submit(BattleCommand.attack(&"player", Vector2i(1, 2))).accepted, "T2 displacement can occur before immediate crystallization")
+	_expect(session.submit(BattleCommand.crystallize(&"player")).accepted, "T2 can crystallize before resolving the enemy phase")
+	_expect_equal(
+		session.state.enemy_history[1][0].get("reconstruction_origin", Vector2i.ZERO),
+		Vector2i(1, 1),
+		"crystallization records the unresolved turn's reconstruction position"
+	)
+	var t3_start := session.submit(BattleCommand.start_next_timeline())
+
+	_expect(t3_start.accepted, "T3 starts after immediate T2 crystallization")
+	_expect_equal(session.state.get_unit(&"guard").position, Vector2i(1, 1), "crystallized T2 ghost rebuilds its displacement")
+	_expect(not _has_event(t3_start, &"enemy_disturbed"), "crystallized matching displacement does not wake again")
+	_expect_equal(int(session.state.get_unit(&"guard").statuses.get("awake_from_turn", 0)), 0, "crystallized T2 history remains fixed in T3")
+
+
 func _test_divergent_ghost_replay_disturbs_enemy() -> void:
 	var state := _create_micro_state(Vector2i(1, 3), Vector2i(1, 2))
 	state.phase = BattlePhase.TIMELINE_TRANSITION
@@ -474,10 +542,8 @@ func _test_awake_state_resets_on_next_timeline() -> void:
 	_expect_equal(session.state.turn_index, 2, "disturbed T2 enemy reaches its awake turn")
 	_expect(bool(session.state.locked_enemy_intents[0].reactive), "enemy is awake only inside the disturbed timeline")
 	session.submit(BattleCommand.end_turn(&"player"))
-	# Isolate timeline-state inheritance from a fresh displacement replayed by the
-	# new ghost. If the attack recording remained, T3 reconstruction would end
-	# away from the rewritten fixed starting position and correctly disturb again.
-	session.state.current_recording.clear()
+	# Keep the T2 displacement recording: in T3 it is established history and
+	# must reconstruct the recorded pre-enemy position without waking again.
 	_expect(session.submit(BattleCommand.crystallize(&"player")).accepted, "disturbed timeline can be committed after recording awake behavior")
 	_expect(session.submit(BattleCommand.start_next_timeline()).accepted, "next timeline starts after disturbed history is committed")
 
