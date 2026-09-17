@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { key } from './battle.js';
+import { buildLaboratory, animateLaboratory } from './laboratory-art.js';
 
 const colors={player:0x1baba1,ghost:0x9a6ce5,enemy:0xec7464};
 const at=(p,height=0.15)=>new THREE.Vector3(p.x-3.5,height,p.y-3.5);
@@ -11,9 +12,9 @@ export class BattleScene {
     this.container=container; this.onCell=onCell; this.onSelect=onSelect; this.onHover=onHover;
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-    this.renderer.shadowMap.enabled=true; this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled=true; this.renderer.shadowMap.autoUpdate=false; this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
-    this.renderer.toneMapping=THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure=1.25;
+    this.renderer.toneMapping=THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure=1.08;
     container.prepend(this.renderer.domElement);
     this.renderer.domElement.setAttribute('aria-label','可旋转的三维战场，拖动旋转，点击格子移动或攻击');
     this.scene=new THREE.Scene(); this.scene.fog=new THREE.Fog(0xeaf0ed,25,55);
@@ -25,15 +26,15 @@ export class BattleScene {
     this.controls.enablePan=false; this.controls.rotateSpeed=.65;
     this.controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
     this.controls.touches={ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN};
-    this.scene.add(new THREE.HemisphereLight(0xf6ffff,0x718985,2.8));
-    const sun=new THREE.DirectionalLight(0xfff7e4,3.4); sun.position.set(-6,14,6); sun.castShadow=true;
+    this.scene.add(new THREE.HemisphereLight(0xe7f4ff,0x59617d,1.9));
+    const sun=new THREE.DirectionalLight(0xf3f7ff,2.6); sun.position.set(-6,14,6); sun.castShadow=true;
     sun.shadow.mapSize.set(2048,2048); Object.assign(sun.shadow.camera,{left:-9,right:9,top:9,bottom:-9,near:1,far:40});
     sun.shadow.normalBias=.035; sun.shadow.bias=-.0002; this.scene.add(sun);
-    const fill=new THREE.DirectionalLight(0xafd6ff,1.8); fill.position.set(7,5,-7); this.scene.add(fill);
+    const fill=new THREE.DirectionalLight(0x91b9ed,1.3); fill.position.set(7,5,-7); this.scene.add(fill);
     this.world=new THREE.Group(); this.scene.add(this.world);
     this.units=new Map(); this.tiles=[]; this.obstacles=[]; this.rifts=[]; this.shards=[];
     this.ray=new THREE.Raycaster(); this.pointer=new THREE.Vector2(); this.selected='player';
-    this.hover=null; this.locked=false; this.tweens=[];
+    this.detailedEnvironment=true;this.hover=null; this.locked=false; this.tweens=[];
     this.labels=document.createElement('div'); this.labels.className='world-labels'; container.append(this.labels);
     this.observer=new ResizeObserver(()=>this.resize()); this.observer.observe(container);
     const canvas=this.renderer.domElement;
@@ -72,6 +73,11 @@ export class BattleScene {
       texture.magFilter=THREE.NearestFilter; texture.minFilter=THREE.LinearMipmapLinearFilter;
       this.textures[name]=texture;
     }));
+    await Promise.all([['floor','lab_floor_tile'],['void','time_void_tile']].map(async ([key,name])=>{
+      const texture=await loader.loadAsync(`${import.meta.env.BASE_URL}assets/${name}.png`);
+      texture.colorSpace=THREE.SRGBColorSpace;texture.magFilter=THREE.NearestFilter;
+      texture.anisotropy=Math.min(4,this.renderer.capabilities.getMaxAnisotropy());this.textures[key]=texture;
+    }));
   }
   material(color,extra={}) { return new THREE.MeshStandardMaterial({color,roughness:.65,metalness:.12,...extra}); }
   box(w,h,d,x,y,z,material,parent=this.world) {
@@ -87,64 +93,19 @@ export class BattleScene {
     group.clear();
   }
   build(level) {
+    this.labArt?.textures.forEach(texture=>texture.dispose());
     this.clearGroup(this.world); this.units.clear(); this.labels.replaceChildren();
-    this.tiles=[];this.obstacles=[];this.rifts=[];this.shards=[];
-    this.level=level;
-    this.box(9.1,.45,9.1,0,-.45,0,this.material(0x334b51));
-    this.box(8.9,.24,8.9,0,-.13,0,this.material(0xc1cfca));
-    this.box(40,.15,40,0,-.85,0,this.material(0xdce6df,{roughness:1}));
-    for(let i=0;i<4;i++) {
-      const g=new THREE.Group();g.rotation.y=i*Math.PI/2;this.world.add(g);
-      this.box(8.5,.035,.035,0,-.26,4.54,this.material(0x82e0cd,{emissive:0x42b2a0,emissiveIntensity:.7}),g);
-      this.box(2,.035,.025,-2.7,.025,4.25,this.material(0x4c726e),g);
-    }
-    const geometry=new THREE.BoxGeometry(.962,.12,.962);
-    for(let y=0;y<8;y++) for(let x=0;x<8;x++) {
-      const hole=level.holes.some(p=>p[0]===x&&p[1]===y);
-      const tile=new THREE.Mesh(geometry,this.material(hole?0x30273f:(x+y)%2?0xdde7df:0xeaf0e6));
-      tile.position.set(x-3.5,.01,y-3.5); tile.receiveShadow=true;
-      tile.userData={kind:'tile',cell:{x,y},base:tile.material.color.clone(),hole};this.world.add(tile);this.tiles.push(tile);
-      if(hole) {
-        const group=new THREE.Group();group.position.copy(at({x,y},.09));this.world.add(group);
-        const disk=new THREE.Mesh(new THREE.CircleGeometry(.41,48),new THREE.MeshBasicMaterial({color:0x32233e}));disk.rotation.x=-Math.PI/2;group.add(disk);
-        [0.24,.36,.44].forEach((r,i)=>{const ring=this.ring(r,.015,i===2?0xc4a1ef:0x8953ce,group);ring.position.y=.015+i*.008;});
-        this.rifts.push(group);
-      }
-    }
-    for(const [x,y] of level.walls) {
-      const g=new THREE.Group();g.position.set(x-3.5,0,y-3.5);this.world.add(g);
-      const mats=[this.material(0xa6beba,{transparent:true}),this.material(0x344e55,{transparent:true}),this.material(0xd2ded8,{transparent:true})];
-      this.box(.86,.14,.86,0,.14,0,mats[1],g);
-      const body=this.box(.7,.97,.68,0,.67,0,mats[0],g);
-      this.box(.74,.07,.73,0,1.2,0,mats[2],g);
-      this.box(.49,.63,.023,0,.71,.351,mats[1],g);
-      for(let k=0;k<4;k++) this.box(.31,.035,.032,-.04,.49+k*.13,.37,this.material(k===3?0xe6be77:0x85e3cf,{emissive:0x429f94,emissiveIntensity:.25,transparent:true}),g);
-      const materials=[];g.traverse(o=>{if(o.material)materials.push(o.material);});
-      this.obstacles.push({body,materials});
-    }
-    // Perimeter furnishings remain below the tactical sightline.
-    const trim=this.material(0x687f7c), pale=this.material(0xccd9d3);
-    for(const x of [-3,0,3]) {
-      this.box(1.7,.35,.5,x,.12,-4.9,trim);this.box(1.75,.08,.58,x,.34,-4.9,pale);
-      this.box(.7,.025,.3,x,.39,-4.9,this.material(0x8ce8d3,{emissive:0x5ca99a,emissiveIntensity:.3}));
-    }
-    for(let i=0;i<8;i++) {
-      this.coordinate(String.fromCharCode(65+i),i-3.5,4.16);
-      this.coordinate(String(i+1),-4.16,i-3.5);
-    }
-    for(let i=0;i<14;i++) {
-      const shard=new THREE.Mesh(new THREE.OctahedronGeometry(.10+(i%3)*.055),this.material(0xaaa1cb,{transparent:true,opacity:.6,metalness:.45}));
-      const angle=i*2.399;shard.position.set(Math.cos(angle)*(5+i%2),.2+i%4*.28,Math.sin(angle)*(5+i%2));
-      shard.userData.baseY=shard.position.y;this.world.add(shard);this.shards.push(shard);
-    }
+    this.tiles=[];this.obstacles=[];this.rifts=[];this.shards=[];this.level=level;
+    this.labArt=buildLaboratory(this,level);this.labArt.exterior.visible=this.detailedEnvironment;this.renderer.shadowMap.needsUpdate=true;
     this.overlays=new THREE.Group();this.world.add(this.overlays);
     this.unitGroup=new THREE.Group();this.world.add(this.unitGroup);
     this.hoverMesh=new THREE.Mesh(new THREE.PlaneGeometry(.92,.92),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.35,depthWrite:false}));
     this.hoverMesh.rotation.x=-Math.PI/2;this.hoverMesh.visible=false;this.world.add(this.hoverMesh);
   }
+  toggleEnvironment() {this.detailedEnvironment=!this.detailedEnvironment;this.labArt.exterior.visible=this.detailedEnvironment;this.renderer.shadowMap.needsUpdate=true;return this.detailedEnvironment;}
   coordinate(text,x,z) {
     const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
-    const ctx=canvas.getContext('2d');ctx.fillStyle='#5e7877';ctx.font='500 64px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,64,64);
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#567387';ctx.font='500 64px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,64,64);
     const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;
     const mat=new THREE.MeshBasicMaterial({map,transparent:true,depthWrite:false});mat.userData.ownedMap=true;
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(.32,.32),mat);mesh.rotation.x=-Math.PI/2;mesh.position.set(x,.07,z);this.world.add(mesh);
@@ -200,7 +161,7 @@ export class BattleScene {
   resize() {
     const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;
     this.renderer.setSize(width,height);const aspect=width/height;
-    const half=aspect<1?6.45/aspect:6.45;
+    const half=Math.max(7.05,8.2/aspect);
     this.camera.left=-half*aspect;this.camera.right=half*aspect;this.camera.top=half;this.camera.bottom=-half;this.camera.updateProjectionMatrix();
   }
   project(p) {this.camera.updateMatrixWorld();const v=p.clone().project(this.camera);const {width,height}=this.container.getBoundingClientRect();return {x:(v.x+1)*width/2,y:(1-v.y)*height/2};}
@@ -261,14 +222,15 @@ export class BattleScene {
       for(const v of this.units.values()) {
         if(v.dead)continue;
         const target=v.group.position.clone().add(new THREE.Vector3(0,.6,0));
-        const direction=target.clone().sub(cam);this.ray.set(cam,direction.clone().normalize());
-        const hit=this.ray.intersectObject(o.body,false)[0];if(hit&&hit.distance<direction.length()){fade=true;break;}
+        const projected=target.clone().project(this.camera);this.ray.setFromCamera(new THREE.Vector2(projected.x,projected.y),this.camera);const rayDistance=this.ray.ray.origin.distanceTo(target);
+        const hit=this.ray.intersectObject(o.body,false)[0];if(hit&&hit.distance<rayDistance){fade=true;break;}
       }
-      for(const mat of o.materials)mat.opacity=THREE.MathUtils.lerp(mat.opacity,fade?.22:1,.1);
+      for(const mat of o.materials)mat.opacity=THREE.MathUtils.lerp(mat.opacity,(mat.userData.baseOpacity??1)*(fade?(o.minimum??.22):1),.1);
     }
     this.rifts.forEach((g,i)=>{g.rotation.y=time*.0003*(i%2?1:-1);g.children.slice(1).forEach((r,j)=>r.material.opacity=.6+Math.sin(time*.002+j)*.25);});
     this.shards.forEach((s,i)=>{s.position.y=s.userData.baseY+Math.sin(time*.0006+i)*.15;s.rotation.y=time*.0002+i;s.rotation.z=Math.sin(time*.0003+i)*.3;});
     if(this.hoverMesh) {this.hoverMesh.visible=Boolean(this.hover)&&!this.locked;if(this.hover)this.hoverMesh.position.copy(at(this.hover,.16));}
+    animateLaboratory(this.labArt,this.camera,time);
     this.renderer.render(this.scene,this.camera);
   }
 }

@@ -7,7 +7,7 @@ const $=s=>document.querySelector(s);
 document.querySelector('#app').innerHTML=`
   <header class="masthead">
     <a class="brand" href="./" aria-label="重载时间循环实验室"><span class="brand-symbol">◈</span><span>时间循环<small>TIMELOOP / TACTICAL LAB</small></span></a>
-    <div class="prototype-badge"><span></span> 三维表现试验 <b>01</b></div>
+    <div class="prototype-badge"><span></span> 三维表现试验 <b>02</b></div>
     <button class="quiet" id="help" aria-label="打开操作说明">操作说明 <span>?</span></button>
   </header>
   <main>
@@ -21,7 +21,7 @@ document.querySelector('#app').innerHTML=`
       <section id="stage" class="stage" aria-label="三维战斗场景">
         <div class="stage-heading"><span class="eyebrow">SECTOR 07 / TEMPORAL FRACTURE</span><h1 id="scene-title">时间断层实验室</h1><p id="scene-subtitle"></p></div>
         <div id="loading" class="loading">正在构建实验室<span></span></div>
-        <div class="camera-tools" aria-label="镜头控制"><button id="rotate-left" title="向左旋转 45°" aria-label="向左旋转">↶</button><button id="rotate-right" title="向右旋转 45°" aria-label="向右旋转">↷</button><button id="top-view">俯视</button><button id="reset-view">复位</button></div>
+        <div class="camera-tools" aria-label="镜头控制"><button id="rotate-left" title="向左旋转 45°" aria-label="向左旋转">↶</button><button id="rotate-right" title="向右旋转 45°" aria-label="向右旋转">↷</button><button id="top-view">俯视</button><button id="reset-view">复位</button><button id="detail-toggle" aria-label="切换完整环境与简洁战术视图" aria-pressed="true">简景</button></div>
         <div class="stage-bottom"><div class="legend"><span class="cyan">本体</span><span class="purple">分身</span><span class="coral">敌人</span><span class="gold">固定意图</span></div><div class="camera-help">拖动旋转 · 滚轮缩放 · 点击选格</div></div>
         <div class="coordinate" id="coordinate">8 × 8</div>
       </section>
@@ -157,6 +157,7 @@ async function boot() {
     $('#sequence').addEventListener('click',e=>{const b=e.target.closest('[data-unit]');if(b)select(b.dataset.unit);});
     $('#level').onchange=e=>reset(e.target.value);$('#restart').onclick=()=>reset(battle.levelId);
     $('#rotate-left').onclick=()=>scene.rotate(-1);$('#rotate-right').onclick=()=>scene.rotate(1);$('#top-view').onclick=()=>scene.resetCamera(true);$('#reset-view').onclick=()=>scene.resetCamera();
+    $('#detail-toggle').onclick=()=>{const shown=scene.toggleEnvironment();$('#detail-toggle').textContent=shown?'简景':'全景';$('#detail-toggle').setAttribute('aria-pressed',String(shown));};
     $('#move').onclick=()=>{if(busy)return;mode='move';selected='player';render();say('点击青色格移动。拖动镜头不会消耗行动。');};
     $('#attack').onclick=()=>{if(busy)return;mode='attack';render();say(battle.targets().length?'点击相邻敌人攻击；生命不高于伤害时触发斩杀。':'当前没有相邻敌人，可以先移动靠近。');};
     $('#end').onclick=()=>run('end');$('#crystallize').onclick=()=>run('crystallize');
@@ -173,7 +174,7 @@ async function boot() {
       const id={'1':'move','2':'attack','3':'crystallize',' ':'end','q':'rotate-left','e':'rotate-right','r':'reset-view'}[e.key.toLowerCase()];
       if(id){e.preventDefault();$(`#${id}`).click();}
     });
-    window.__battleDemo={snapshot:()=>battle.snapshot(),cellScreen:p=>{const q=scene.cellScreen(p),r=$('#stage').getBoundingClientRect();return {x:q.x+r.left,y:q.y+r.top};},camera:()=>scene.camera.position.toArray(),ready:true,get busy(){return busy;}};
+    window.__battleDemo={snapshot:()=>battle.snapshot(),cellScreen:p=>{const q=scene.cellScreen(p),r=$('#stage').getBoundingClientRect();return {x:q.x+r.left,y:q.y+r.top};},camera:()=>scene.camera.position.toArray(),artInfo:()=>({walls:scene.labArt.walls.map(w=>({visible:w.group.visible,fade:w.fade})),detailed:scene.labArt.exterior.visible,tiles:scene.tiles.length,drawCalls:scene.renderer.info.render.calls,geometries:scene.renderer.info.memory.geometries,textures:scene.renderer.info.memory.textures}),ready:true,get busy(){return busy;}};
   } catch(error) {
     console.error(error);$('#loading')?.remove();
     const notice=document.createElement('div');notice.className='load-error';notice.textContent='三维场景未能启动。请使用支持 WebGL 2 的浏览器并开启硬件加速，然后刷新页面。';$('#stage').append(notice);

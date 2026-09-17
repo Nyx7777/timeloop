@@ -16,3 +16,11 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;background:#f5f7f2;b
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.finish-enemy{opacity:0}}
 .world-labels[data-move="true"] .unit-label{pointer-events:none}
 @media(max-width:700px){.counters>.time-state{display:none}.inspector{height:166px}.unit-info h2{font-size:14px}.intent-card .eyebrow{font-size:9px}.intent-card p{font-size:11px;line-height:1.5}.card-action{font-size:10px;min-height:30px}.context p{font-size:10px}.actions b{font-size:11px}}
+/* Laboratory art pass: cold ceramic, blue steel and a subdued temporal perimeter. */
+:root{--ink:#293e50;--muted:#748898;--line:#cbd7e0;background:#e7edf1;color:#293e50}
+.stage{background:radial-gradient(ellipse at 49% 42%,#f1f6fc 0%,#e3eaf3 48%,#c5c6dc 100%)}
+.inspector{background:#f1f5f8}.portrait-wrap{background:radial-gradient(ellipse at 50% 90%,#b5d9e36b,transparent 65%)}
+.stage-heading h1{color:#294657}.stage-heading p,.stage-heading .eyebrow{color:#6e869c}
+.camera-tools{max-width:240px;flex-wrap:wrap;justify-content:flex-end}.camera-tools button{background:#f4f8fccf;border-color:#bdcbd8}
+#detail-toggle{color:#6b628b;border-color:#c7bfd7}
+@media(max-width:700px){.camera-tools{max-width:115px}.stage-heading{max-width:205px}.stage-heading p{max-width:190px;line-height:1.5}}
