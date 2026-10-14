@@ -2,8 +2,8 @@
 // Godot remains the authoritative full game; no DOM or animation lives here.
 export const LEVELS = {
   laboratory: {
-    name: '时间断层实验室', subtitle: '空间与斩杀 · 自定义试验场', lives: 3,
-    hint: '先攻击身旁的 E1，体验二维斩杀；随后移动、结束回合，或固化留下分身。',
+    name: '时间断层实验室', subtitle: '一对一交战 · 自定义试验场', lives: 3,
+    hint: '先攻击身旁的 E1，体验对打、扣血与死亡；随后移动、结束回合，或固化留下分身。',
     walls: [[1,1],[1,2],[5,2],[5,3],[2,4],[5,6]], holes: [[3,3],[6,1]],
     player: { x: 2, y: 6, hp: 6, damage: 2, range: 3 },
     enemies: [{x:3,y:6,hp:2,damage:1,range:1},{x:6,y:4,hp:4,damage:1,range:1},{x:3,y:1,hp:4,damage:1,range:1}],
@@ -125,7 +125,7 @@ export class Battle {
     return {id:enemy.id,path,target:distance(p,this.player)===1?position(this.player):null,damage:enemy.damage};
   }
   hit(source,target,damage,events) {
-    events.push({type:'attack',id:source.id,target:position(target),targetId:target.id});
+    events.push({type:'attack',id:source.id,target:position(target),targetId:target.id,attacker:copy(source),defender:copy(target),damage,hpAfter:Math.max(0,target.hp-damage)});
     target.hp=Math.max(0,target.hp-damage);
     events.push({type:'damage',id:target.id,damage,hp:target.hp});
     if(target.hp===0) {

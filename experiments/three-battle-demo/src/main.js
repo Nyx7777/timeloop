@@ -1,4 +1,5 @@
 import './style.css';
+import { duelMarkup, playDuel } from './duel.js';
 import { Battle, cellName, same } from './battle.js';
 import { BattleScene } from './scene.js';
 
@@ -7,7 +8,7 @@ const $=s=>document.querySelector(s);
 document.querySelector('#app').innerHTML=`
   <header class="masthead">
     <a class="brand" href="./" aria-label="重载时间循环实验室"><span class="brand-symbol">◈</span><span>时间循环<small>TIMELOOP / TACTICAL LAB</small></span></a>
-    <div class="prototype-badge"><span></span> 三维表现试验 <b>02</b></div>
+    <div class="prototype-badge"><span></span> 三维表现试验 <b>03</b></div>
     <button class="quiet" id="help" aria-label="打开操作说明">操作说明 <span>?</span></button>
   </header>
   <main>
@@ -32,11 +33,11 @@ document.querySelector('#app').innerHTML=`
         <div class="record-panel"><span class="eyebrow">最近发生</span><ol id="log"></ol></div>
       </aside>
     </div>
-    <section class="command-deck"><div class="context"><span class="context-dot"></span><p id="hint" role="status" aria-live="polite"></p><label class="cinematic-option"><input type="checkbox" id="cinematics" checked/>斩杀演出</label><button id="preview" class="quiet">演出预览 ↗</button></div><div class="actions"><button id="move" data-command="move"><span class="action-icon">↗</span><span><b>移动</b><small id="move-state">3 格 · 每回合一次</small></span><kbd>1</kbd></button><button id="attack" data-command="attack"><span class="action-icon">✧</span><span><b>攻击</b><small id="attack-state">相邻一格</small></span><kbd>2</kbd></button><button id="crystallize" data-command="crystallize"><span class="action-icon">◈</span><span><b>固化</b><small>留下本条时间线</small></span><kbd>3</kbd></button><button id="end" data-command="end" class="end-action"><span class="action-icon">→</span><span><b>结束回合</b><small>执行敌方行动</small></span><kbd>空格</kbd></button></div></section>
+    <section class="command-deck"><div class="context"><span class="context-dot"></span><p id="hint" role="status" aria-live="polite"></p><label class="cinematic-option"><input type="checkbox" id="cinematics" checked/>对战演出</label><button id="preview" class="quiet">演出预览 ↗</button></div><div class="actions"><button id="move" data-command="move"><span class="action-icon">↗</span><span><b>移动</b><small id="move-state">3 格 · 每回合一次</small></span><kbd>1</kbd></button><button id="attack" data-command="attack"><span class="action-icon">✧</span><span><b>攻击</b><small id="attack-state">相邻一格</small></span><kbd>2</kbd></button><button id="crystallize" data-command="crystallize"><span class="action-icon">◈</span><span><b>固化</b><small>留下本条时间线</small></span><kbd>3</kbd></button><button id="end" data-command="end" class="end-action"><span class="action-icon">→</span><span><b>结束回合</b><small>执行敌方行动</small></span><kbd>空格</kbd></button></div></section>
   </main>
   <footer><span>THREE-DIMENSIONAL COMBAT STUDY</span><span>场景可旋转 / 信息始终正对你</span></footer>
   <div id="dialog" class="dialog-backdrop" hidden><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><span class="eyebrow" id="dialog-kicker">TIMELOOP</span><h2 id="dialog-title"></h2><p id="dialog-text"></p><div id="dialog-buttons"></div></section></div>
-  <div id="finisher" class="finisher" hidden role="dialog" aria-modal="true" aria-label="二维斩杀演出"><div class="finish-grid"></div><div class="finish-halo"></div><span class="finish-code">CAUSALITY / SEVERED</span><div class="finish-portrait"><img id="finish-actor" src="${asset('player')}" alt="我方角色斩杀特写"/></div><div class="finish-enemy"><img src="${asset('guard')}" alt="时间错位研究员"/></div><div class="finish-slash"></div><div class="finish-copy"><span id="finish-source">实验体 07 · 特殊终结</span><h2>时序<span>断裂</span></h2><p>这一刻，只留下你的未来。</p><b id="finish-result">目标已消除</b></div><button id="skip" class="skip">跳过演出　Esc ↗</button></div>
+  ${duelMarkup}
 `;
 
 let battle=new Battle(),scene,busy=false,selected='player',mode='move',logs=[],finishResolve=null,previousFocus=null;
@@ -65,7 +66,7 @@ function render() {
   $('#intent-detail').textContent=u.team==='player'?`${battle.moved?'移动已用':battle.acted?'本回合移动已关闭':'可移动'} · ${battle.acted?'攻击已用':'可攻击'}。青色格可达，橙红色格可攻击。`:u.team==='ghost'?`重演 T${u.source} 的第 ${battle.turn} 回合，录像止于第 ${u.endTurn} 回合。`:
     intent?`${intent.path.length>1?`移动至 ${cellName(intent.path.at(-1))}`:'原地'}${intent.target?` → 攻击 ${cellName(intent.target)}，${intent.damage} 点伤害`:' → 等待'}。`:'? 敌人将在你结束回合后决策，当前不显示其路径或攻击目标。';
   const legalTarget=battle.targets().some(e=>e.id===u.id);
-  $('#card-action').textContent=u.team==='enemy'?(legalTarget?(u.hp<=battle.player.damage?'斩杀这个敌人 ✧':'攻击这个敌人 ✧'):'与本体相邻后可攻击'):u.team==='ghost'?'查看本体行动 ↗':'选择移动位置 ↗';
+  $('#card-action').textContent=u.team==='enemy'?(legalTarget?'攻击这个敌人 ✧':'与本体相邻后可攻击'):u.team==='ghost'?'查看本体行动 ↗':'选择移动位置 ↗';
   $('#card-action').disabled=busy||battle.phase!=='input'||(u.team==='enemy'&&!legalTarget)||(u.team==='player'&&(battle.moved||battle.acted));
   $('#move-state').textContent=battle.moved?'本回合已移动':battle.acted?'攻击后不可移动':`${battle.player.range} 格 · 每回合一次`;
   $('#attack-state').textContent=battle.acted?'本回合已攻击':`${battle.player.damage} 点伤害 · 相邻一格`;
@@ -99,25 +100,18 @@ function showDialog(kicker,title,text,buttons) {
   $('#dialog').hidden=false;$('#dialog-buttons button').focus();
 }
 function closeFinisher() {finishResolve?.();}
-async function finisher(source='player',preview=false) {
-  const previous=document.activeElement;const ghost=source.startsWith('ghost');
-  $('#finish-actor').src=asset(ghost?'ghost':'player');$('#finish-source').textContent=ghost?`T${source.replace('ghost','')} 分身 · 历史终结`:'实验体 07 · 特殊终结';
-  $('#finish-result').textContent=preview?'演出预览 · 不影响战斗':'目标已消除';
-  $('#finisher').hidden=false;$('#finisher').classList.toggle('ghost-finish',ghost);$('#skip').focus();
-  await new Promise(resolve=>{
-    let done=false;const timer=setTimeout(finish,reduced?350:2100);
-    function finish(){if(done)return;done=true;clearTimeout(timer);finishResolve=null;$('#finisher').hidden=true;previous?.focus();resolve();}
-    finishResolve=finish;
-  });
+async function finisher(event,preview=false) {
+  const duel=playDuel(event,{preview,reduced});finishResolve=duel.close;
+  try {await duel.finished;} finally {finishResolve=null;}
 }
 async function play(events) {
   for(const event of events) {
     const speed=reduced?4:1;
     if(event.type==='move') await scene.move(event.id,event.path,speed);
-    if(event.type==='attack'||event.type==='miss') await scene.attack(event.id,event.target,speed);
+    if(event.type==='attack'&&$('#cinematics').checked) await finisher(event);
+    else if(event.type==='attack'||event.type==='miss') await scene.attack(event.id,event.target,speed);
     if(event.type==='damage'){await scene.damage(event.id,event.damage,event.hp,speed);log(`${event.id==='player'?'本体':event.id.replace('enemy','E')} 受到 ${event.damage} 点伤害。`);}
     if(event.type==='death') {
-      if(event.finisher&&$('#cinematics').checked)await finisher(event.killer);
       await scene.death(event.id,speed);
     }
   }
@@ -159,10 +153,10 @@ async function boot() {
     $('#rotate-left').onclick=()=>scene.rotate(-1);$('#rotate-right').onclick=()=>scene.rotate(1);$('#top-view').onclick=()=>scene.resetCamera(true);$('#reset-view').onclick=()=>scene.resetCamera();
     $('#detail-toggle').onclick=()=>{const shown=scene.toggleEnvironment();$('#detail-toggle').textContent=shown?'简景':'全景';$('#detail-toggle').setAttribute('aria-pressed',String(shown));};
     $('#move').onclick=()=>{if(busy)return;mode='move';selected='player';render();say('点击青色格移动。拖动镜头不会消耗行动。');};
-    $('#attack').onclick=()=>{if(busy)return;mode='attack';render();say(battle.targets().length?'点击相邻敌人攻击；生命不高于伤害时触发斩杀。':'当前没有相邻敌人，可以先移动靠近。');};
+    $('#attack').onclick=()=>{if(busy)return;mode='attack';render();say(battle.targets().length?'点击相邻敌人，进入一对一战斗；生命归零时死亡。':'当前没有相邻敌人，可以先移动靠近。');};
     $('#end').onclick=()=>run('end');$('#crystallize').onclick=()=>run('crystallize');
     $('#card-action').onclick=()=>{const u=getSelected();if(u.team==='enemy')run('attack',{x:u.x,y:u.y});else {selected='player';render();$('#move').click();}};
-    $('#preview').onclick=async()=>{if(busy)return;busy=true;render();try{await finisher('player',true);}finally{busy=false;render();}};
+    $('#preview').onclick=async()=>{if(busy)return;busy=true;render();try{await finisher({attacker:{...battle.player,hp:battle.player.maxHp},defender:{...battle.enemies[0],hp:2},damage:2,hpAfter:0},true);}finally{busy=false;render();}};
     $('#skip').onclick=closeFinisher;
     $('#help').onclick=()=>showDialog('FIELD / MANUAL','把战场转到看得清的角度','拖动棋盘旋转，滚轮或双指缩放；点击顶部行动卡查看完整信息。按 1 移动、2 攻击、3 固化，空格结束回合。手机上点击底部按钮操作。第一关沿用项目原始配置；实验室是自定义视觉试验场，未加入击退、扰动和完整六关规则。',[{label:'进入实验室'}]);
     window.addEventListener('keydown',e=>{

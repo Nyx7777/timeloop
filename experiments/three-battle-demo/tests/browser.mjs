@@ -24,7 +24,7 @@ try {
   assert.deepEqual(await snapshot(),before);checks.push('Camera button/drag do not consume actions');
   await page.click('#top-view');await page.waitForTimeout(400);await shot('desktop-top-view');await page.click('#reset-view');
   await page.click('[data-unit="enemy1"]');assert.match(await page.locator('#intent-detail').innerText(),/不显示/);
-  assert.match(await page.locator('#card-action').innerText(),/斩杀/);checks.push('Unknown enemy intent remains hidden; selected card readable');
+  assert.match(await page.locator('#card-action').innerText(),/攻击/);checks.push('Unknown enemy intent remains hidden; selected card readable');
   await page.click('#card-action');await page.locator('#finisher').waitFor({state:'visible'});await page.waitForTimeout(650);await shot('finisher');
   const atFinisher=await snapshot();assert.equal(atFinisher.enemies[0].hp,0);
   await page.click('#skip');await ready();assert.deepEqual(await snapshot(),atFinisher);checks.push('Lethal hit enters 2D finisher; skip preserves settled state');

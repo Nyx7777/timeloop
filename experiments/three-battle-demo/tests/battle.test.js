@@ -85,3 +85,12 @@ test('final life death yields defeat without an unusable extra recording',()=>{
   for(let i=0;i<8&&b.phase==='input';i++)b.command('end');
   assert.equal(b.phase,'lost');assert.equal(b.records.length,1);assert.equal(b.command('next').ok,false);
 });
+
+test('attack snapshots preserve per-hit HP for sequential strikes and overkill',()=>{
+  const b=new Battle();const target=b.enemies[1],events=[];
+  b.hit(b.player,target,1,events);b.hit(b.player,target,8,events);
+  const attacks=events.filter(e=>e.type==='attack');
+  assert.deepEqual(attacks.map(e=>[e.defender.hp,e.hpAfter]),[[4,3],[3,0]]);
+  target.hp=99;b.player.hp=1;
+  assert.equal(attacks[0].defender.hp,4);assert.equal(attacks[0].attacker.hp,6);
+});
